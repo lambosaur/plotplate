@@ -1,0 +1,28 @@
+name: Cell Press
+description: Cell and Cell Press journals (two-column formats).
+applies_to: [Cell, Molecular Cell, Cell Reports, Cell Genomics, Cell Systems, other Cell Press journals]
+sources:
+  - https://www.cell.com/information-for-authors/figure-guidelines
+verified: >-
+  2026-09-14, read from an Internet Archive copy (2026 capture) of the official page. Direct
+  access to cell.com is blocked for tools.
+page:
+  widths: {single: 85, onehalf: 114, full: 174}  # three-column formats: 55, 114, 174
+  max_height: 200  # recommended maximum figure 6.5 x 8 in (16.5 x 20 cm)
+style:
+  font: {family: [Arial, Liberation Sans], size: 7, small: 6, large: 8, min: 6, max: 8}
+  panel_label: {size: 8, weight: bold, case: upper}  # capital letters required; size not stated
+  lines: {min: 0.5}
+  export: {dpi: 600}
+deliverable:
+  composite: true  # "Each figure file should include all the panels"
+  formats: [tiff, pdf, eps, jpeg]
+  raster_dpi: 600
+notes:
+  - Text about 6-8 pt at print size; use only Arial fonts, embedded.
+  - Panels labelled with capital letters (size not stated).
+  - Line weights 0.5-1.5 pt.
+  - Colour or greyscale images at least 300 dpi, black and white 500 dpi, line art 1000 dpi at print size.
+  - RGB colour; do not use red and green together; grey fills 10-80 % and at least 20 % apart.
+  - Recommended maximum figure 6.5 x 8 in (16.5 x 20 cm); maximum 20 MB per file.
+  - TIFF and PDF preferred for production; one file per figure containing all panels; no titles or legends in the file.

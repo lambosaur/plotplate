@@ -1,0 +1,20 @@
+extends: default
+
+rules:
+  document-start: disable
+  line-length: disable
+  truthy:
+    # check-keys: false stops this from flagging GitHub Actions' own "on:" key
+    # (itself a YAML 1.1 truthy-ish word) as an error. Values are still checked,
+    # which is the real catch: an unquoted "no"/"yes"/"on"/"off" (e.g. a country
+    # code "NO" for Norway) parses as a boolean in some YAML 1.1 parsers and as
+    # a plain string in YAML 1.2 ones. See docs/tooling.md.
+    check-keys: false
+
+# Generated or vendored trees: not our YAML.
+ignore: |
+  .pixi/
+  .tox/
+  .claude/
+  examples/
+  .demo/

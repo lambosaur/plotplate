@@ -1,0 +1,7 @@
+# Tracked, shared direnv config. Do not put machine-specific or secret values here -
+# this file is committed. Personal overrides go in the gitignored .envrc:
+#
+#   echo 'source_env .envrc.shared' > .envrc
+#   direnv allow
+
+eval "$(pixi shell-hook)"

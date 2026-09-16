@@ -1,0 +1,73 @@
+# Always generated, never force-installed. `make setup` offers to run
+# `pre-commit install`; it is also always runnable ad hoc via `make lint`
+# (see Makefile) without being installed as a git hook.
+# Enforcement policy: config files + CI are the real gate. See
+# project-meta/docs/tooling.md.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.13.0
+    hooks:
+      - id: markdownlint-cli2
+
+  # mdformat: canonical formatting (list markers, spacing). Complements
+  # markdownlint-cli2 the way ruff-format complements ruff check: one formats;
+  # one lints structure. Does not touch existing line breaks (safe for the
+  # one-sentence-per-line convention; see docs/markdown-style-guide.md).
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.19
+    hooks:
+      - id: mdformat
+        # Without this, mdformat does not recognize a SKILL.md's YAML frontmatter as
+        # frontmatter and mangles it (verified directly while building this template).
+        additional_dependencies: [mdformat-frontmatter]
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.24.6
+    hooks:
+      - id: typos
+
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.0.3
+    hooks:
+      - id: editorconfig-checker
+
+  # taplo: the same tool behind the even-better-toml VS Code extension.
+  - repo: https://github.com/ComPWA/taplo-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: taplo-format
+      - id: taplo-lint
+        # This hook's own default args force --default-schema-catalogs, which
+        # tries an online fetch and fails in offline/restricted environments
+        # (verified directly). --no-schema overrides that default entirely.
+        args: [--no-schema]
+
+  # yamllint config in .yamllint.yaml disables the document-start and
+  # line-length rules, and stops the truthy check from flagging GitHub
+  # Actions' own "on:" key while still catching a real unquoted-truthy value
+  # (see docs/tooling.md).
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+        args: [--maxkb=50000]
+      - id: check-case-conflict
+      - id: detect-private-key
+
+# Generated figure outputs (panel files, previews) are tool output, not hand-written text.
+exclude: (^\.pixi/|\.ipynb$|^docs/images/|^src/plotplate/demo/legacy/manuscript\.pdf$)

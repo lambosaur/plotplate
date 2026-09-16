@@ -1,0 +1,117 @@
+# Design notes
+
+[← README](../README.md) · [layout reference](layout-spec.md) · [workflow](workflow.md)
+
+## Scope
+
+This file records why the package works the way it does, what it does not do yet, and the open questions.
+
+## Problem
+
+Panels were exported from analysis notebooks at sizes chosen for on-screen readability.
+Assembling them in LaTeX meant rescaling or cropping each one.
+Rescaling changes font sizes panel by panel, so the figure looks heterogeneous.
+Fixing that by hand in Inkscape is slow and does not survive a data update.
+
+## Decisions
+
+| decision | reason |
+| --- | --- |
+| One `layout.yaml` per figure is the source of truth. | Python, preview, SVG and LaTeX cannot drift apart. |
+| A panel is one matplotlib figure, not one axes. | Composite plots (clustermap, jointplot, ROC+PRC) stay single units. One notebook per panel stays simple. |
+| Panels are saved at exactly their box size and included at scale 1.0. | Font sizes and line widths are then true print sizes, and checks on the figure are checks on the print. |
+| Alignment across panels uses named guides and absolute axes rectangles. | It gives gridspec-like alignment across separately exported figures. |
+| LaTeX draws panel letters. | Letters stay consistent and editable in the manuscript, and panel files stay reusable. |
+| `plotplate export` also writes one composite file per figure. | Cell, BMC, PLOS and Science want all panels in one file for production (see [journal-specs.md](journal-specs.md)). |
+| Checks measure text at the export resolution. | At screen resolution, font hinting shortens small text by up to ~10 %, which hid a clipped label. |
+| The preview composes the panel PDFs with the same placement as LaTeX. | You can check the figure locally without Overleaf. A test compiles the snippet with Tectonic (XeTeX) and compares pixels. |
+| PDF import reads placed graphics from the page's drawing instructions. | Positions are exact, letters name panels, and the placement scale explains uneven legacy figures. No model is needed. |
+| Screenshot import uses a deterministic XY-cut, not model vision. | An agent only names and merges segments, and tools compute all coordinates. The wireframe overlay verifies the result. |
+| `plotplate` is a standalone tool (pipx/uv); outputs go next to the given layout. | Works in any repository without copying a skeleton; the installation holds no user files. |
+| The demo ships inside the package (`plotplate demo`). | Users of a tool installation can run it; the repository has one copy, and README images are generated from it. |
+| All files are tracked on every branch (`main`, `dev`, features). | Git cannot keep per-branch file sets maintainably, and installations never include development files. |
+| Inkscape SVG import only updates boxes. | Drawing tools are good for geometry. Style, guides and grid settings stay in YAML. |
+| Text is kept as text (PDF Type 42, SVG `fonttype: none`). | Journals require editable, embedded fonts. |
+| Journal presets record sources and a `verified` note. | Guidelines change, and several pages could not be fetched directly. |
+
+## Alternatives considered
+
+- **figurefirst** (layouts drawn in Inkscape, axes created from SVG rectangles).
+  The closest existing idea.
+  It targets a single matplotlib figure for the whole page, which conflicts with the one-panel-one-figure decision.
+  It is also not actively maintained.
+- **One matplotlib figure with subfigures for the whole page.**
+  Seaborn figure-level functions (clustermap) cannot draw into a subfigure.
+  One script per figure grows too large.
+- **PGF backend, text typeset by XeLaTeX.**
+  It gives an exact font match with the manuscript, but it is slower and more fragile.
+  You chose system fonts (Arial) instead.
+- **svgutils / patchworklib composition in Python as the final output.**
+  You chose LaTeX assembly for the final figure.
+  The preview covers the Python-side need.
+
+## Revisions
+
+Rearranging a figure touches the layout and the notebooks together, so the deterministic and the judgement parts are separated:
+
+| part | where |
+| --- | --- |
+| what changed between two layouts (moved, merged, split, added, removed), and which notebooks are affected | `plotplate diff`, which matches panels by key or by box overlap and writes a plan |
+| stable identity across re-lettering | panel keys, with `labels: auto` assigning letters by reading order |
+| deciding the new arrangement, moving drawing functions, keeping constraints | the `figure-layout-revision` and `figure-layout-refine` skills (agent, plan-first) |
+
+Alignment across panels stays explicit: named guides, which a refinement proposes and the user approves.
+There is no automatic "make it look aligned" step, because which edges should align is a design decision.
+
+## Identity and alignment
+
+- Three levels of name: the figure (layout file), the panel (key, with the letter as display) and the plotting area (axes name).
+  A panel is always one matplotlib figure, so a seaborn clustermap (several axes) is one panel with named areas inside it.
+- Alignment across panels only exists through page coordinates, because panels are separate figures: named guides are that mechanism.
+- `plotplate from-pdf --axes --guides` recovers both levels from an existing figure: plotting areas from the rectangles matplotlib paints, guides from edges shared by several panels.
+
+## Known limitations
+
+- Guides do not round-trip through SVG.
+  Import replaces guide references of edited axes with numbers.
+- The screenshot detector needs a clean white background and gutters of at least `--min-gap` mm.
+  Panels that touch each other come out as one segment.
+- `place_clustermap` supports the default clustermap arrangement (dendrograms left and top).
+- Text overlap is a bounding-box test, so rotated labels can produce false positives.
+- `--axes` only works for vector panels; raster panels (PNG) keep no shapes to read.
+- `plotplate build` runs panel scripts as plain Python, without a Jupyter kernel.
+  Notebook-only display calls return `None` there.
+- The NAR preset is not verified from journal text (see [journal-specs.md](journal-specs.md#nucleic-acids-research)).
+- Genome Research gives no column widths, so its layouts need an explicit `page.width`.
+- `plotplate from-pdf` records clipped `\includegraphics` (trim, clip) at their unclipped size.
+- Illustrator and Inkscape PDF exports were not tested (no licence or package available here); [layout-sources.md](layout-sources.md) states the expected behaviour.
+- No interactive editor: correct boxes in Inkscape through `svg-export`/`svg-import`.
+- `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the user) decides how drawing code moves.
+- Panel letters in the LaTeX output use the document font; set `\plotplatePanelLabel` to Arial (for example with `fontspec` under XeLaTeX) to match `plotplate export`.
+
+## Integration with project-meta
+
+Planned order, as agreed:
+
+1. This package, proven on the synthetic demo (done), then on one real PARNET figure (start with `plotplate from-pdf` on the Overleaf PDF).
+1. A Copier question in project-meta, for example `has_figures`, which generates `figures/style.yaml`, a `figures/_template/` folder (layout, one panel notebook, README), the pixi dependency, the skills, and a `build-figures` task.
+1. The same template applied to `parnet--paper`.
+
+Nothing in project-meta or PARNET has been changed so far.
+
+## Open questions
+
+- The name: `plotplate` / `plotplate` was a placeholder. Free on PyPI: figplate, panelfit, plotplate, figlay, figboard, platefig, figfit, mmfig.
+
+- Should `plotplate` apply a revision plan mechanically (rename keys, rename `panels/*` files, scaffold new notebooks), leaving only content moves to the agent?
+
+- Where should the package be hosted (GitHub organization, name) so that figures repositories can pin a tag?
+
+- Should panel notebooks also be paired `.ipynb` files, as in the project-meta notebook convention, or stay `.py` only?
+
+- Which real PARNET figure should be the pilot, and where is its screenshot?
+
+- NAR: can you get the figure section of the NAR author instructions (logged-in browser), so the preset can be verified?
+
+- Should `text-near-edge` (text within 0.5 mm of the panel edge) become a warning?
+  It would catch labels that touch the neighbouring panel's gap.

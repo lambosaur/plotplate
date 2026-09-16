@@ -1,0 +1,5 @@
+# Pins the local runner image act uses, so `act` runs are reproducible.
+# catthehacker/ubuntu is a community-maintained image that approximates the real
+# (much larger) GitHub-hosted ubuntu-latest runner more closely than plain `ubuntu`.
+# See project-meta/docs/tooling.md for act + Docker/Podman/Apptainer notes.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest

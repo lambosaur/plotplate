@@ -1,0 +1,29 @@
+name: Science
+description: Science (AAAS).
+applies_to: [Science]
+sources:
+  - https://www.science.org/content/page/instructions-preparing-initial-manuscript
+  - https://www.science.org/content/page/instructions-preparing-revised-manuscript
+verified: >-
+  2026-09-14, read from Internet Archive copies of the official pages (initial manuscript: 2024
+  capture; revised manuscript: 2026 capture). Direct access to science.org is blocked for tools.
+page:
+  widths: {single: 57, double: 121, triple: 184}
+  max_height: null  # not stated
+style:
+  font: {family: [Helvetica, Arial, Liberation Sans], size: 7, small: 6, large: 7, min: 5, max: 8}
+  panel_label: {size: 10, weight: bold, case: upper}
+  lines: {min: 0.5}
+  rc: {xtick.minor.visible: false, ytick.minor.visible: false}
+deliverable:
+  composite: true  # each figure as an individual file
+  formats: [pdf, eps, ai, tiff]
+  raster_dpi: 300
+notes:
+  - Printed widths usually 5.7 cm (1 column), 12.1 cm (2 columns), 18.4 cm (3 columns).
+  - Lettering about 7 pt after reduction, not smaller than 5 pt; avoid wide variation in type size.
+  - Sans-serif, Helvetica preferred. Part labels A, B, C in 10 pt bold, upper-left corner.
+  - Symbols at least 6 pt; line widths at least 0.5 pt at final size.
+  - No minor tick marks, no grid lines; do not repeat common axis labels; units in parentheses.
+  - Avoid red with green, similar hues, greyscale, and coloured type.
+  - Revision stage formats in preferred order - vector PDF, EPS, AI; raster TIFF at 300 dpi or more.

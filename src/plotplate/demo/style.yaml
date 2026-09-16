@@ -1,0 +1,7 @@
+# Project-wide style shared by every figure (fig1, fig2, ...). Referenced from each
+# layout.yaml via `style_files`. Keep colors here so a model has the same color everywhere.
+colors:
+  ParNet: "#1b6ca8"
+  Baseline CNN: "#e08e45"
+  k-mer model: "#8c8c8c"
+  highlight: "#c0392b"

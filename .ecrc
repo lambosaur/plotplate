@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "Indentation disabled because it conflicts with mdformat's own correct ordered-list continuation spacing",
+    "(a '1. ' marker is 3 characters wide, not a multiple of 2 or 4).",
+    "Every other check (EndOfLine, InsertFinalNewline, TrimTrailingWhitespace) stays enabled.",
+    "See docs/tooling.md."
+  ],
+  "Disable": {
+    "Indentation": true
+  }
+}

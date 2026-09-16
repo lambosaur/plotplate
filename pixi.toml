@@ -1,0 +1,116 @@
+[workspace]
+# pixi-build lets `pixi global install --git/--path` build this project as a tool.
+preview = ["pixi-build"]
+name = "plotplate"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+# Package metadata for `pixi global install` (source builds); PyPI installs use pyproject.toml.
+[package]
+name = "plotplate"
+version = "0.0.1"
+
+[package.build]
+backend = { name = "pixi-build-python", version = "*" }
+
+[package.host-dependencies]
+setuptools = "*"
+
+[package.run-dependencies]
+python = ">=3.12"
+matplotlib = "*"
+numpy = "*"
+pyyaml = "*"
+pymupdf = "*"
+
+[dependencies]
+python = ">=3.12"
+
+[pypi-dependencies]
+plotplate = { path = ".", editable = true }
+
+# --- dev: always present, always the CI-enforced version of every tool ---
+
+[feature.dev.dependencies]
+ruff = "*"
+tox = "*"
+mypy = "*"
+pytest = "*"
+pre-commit = "*"
+mdformat = "*"
+mdformat-frontmatter = "*"
+taplo = "*"
+yamllint = "*"
+
+[feature.dev.tasks]
+lint = "ruff check ."
+format = "ruff format ."
+# Formats every *.md file in the repo (mdformat recurses a directory on its own).
+# .pixi/ is excluded since installed packages ship their own markdown docs.
+format-md = "mdformat . --exclude '.pixi/**'"
+# taplo: the same tool that powers the even-better-toml VS Code extension, so the
+# editor and this command apply the identical canonical formatting.
+format-toml = "taplo format"
+lint-toml = "taplo lint"
+# yamllint's "truthy" rule catches the YAML 1.1-vs-1.2 ambiguity (unquoted
+# no/yes/on/off, e.g. a country code "NO" parsing as boolean False in some
+# parsers) - see docs/tooling.md.
+lint-yaml = "yamllint ."
+typecheck = "mypy ."
+test = "pytest"
+# Full demo in the git-ignored .demo/ folder (same as a user running `plotplate demo`).
+demo = "plotplate demo examples/demo --build --force"
+hard-case = { cmd = "python make.py && plotplate from-pdf hard.pdf -o layout.yaml --axes --guides --wireframe wireframe.png && plotplate preview layout.yaml", cwd = "examples/hard-layout" }
+# Regenerate the README/docs images in docs/images/ from a fresh demo build.
+docs-figures = "python scripts/make_docs_figures.py"
+
+# --- jupyter: notebooks, with the named-kernel fix for the VS Code kernel picker ---
+# See docs/pixi-conventions.md in project-meta for why this task exists.
+
+[feature.jupyter.dependencies]
+jupyterlab = "*"
+ipykernel = "*"
+jupytext = "*"
+nbqa = "*"
+# mdformat + mdformat-frontmatter already come from feature.dev, which every
+# environment that includes "jupyter" also includes; see [environments] below.
+papermill = "*"
+
+[feature.jupyter.tasks]
+install-kernel = "python -m ipykernel install --user --name plotplate-jupyter --display-name 'plotplate · jupyter'"
+sync-notebooks = "jupytext --sync src/plotplate/demo/**/panel_*.py"
+# Formats markdown cells inside notebooks (nbqa runs mdformat against .ipynb markdown
+# cells specifically), then re-syncs the paired .py so both stay in sync.
+format-notebooks = "jupytext --sync src/plotplate/demo/**/panel_*.py"
+
+# --- data-stack: common analysis libraries, likely to be needed by most subprojects.
+# A domain-specific shared stack (bioinformatics tools, a lab's own model libraries)
+# does NOT belong here; it belongs in a feature block added to that project's own
+# <project>--meta/template/pixi.toml.jinja, since it is specific to that project, not
+# universal. See docs/pixi-conventions.md.
+
+[feature.data-stack.dependencies]
+numpy = "*"
+pandas = "*"
+matplotlib = "*"
+scipy = "*"
+scikit-learn = "*"
+seaborn = "*"
+# Layout specs are YAML; figure data tables are Parquet.
+pyyaml = "*"
+pyarrow = "*"
+# Rasterize/inspect exported PDFs (tests, preview, font checks).
+pymupdf = "*"
+
+[feature.data-stack.pypi-dependencies]
+# Composable annotated heatmaps; optional integration (plotplate.marsilea_helpers).
+marsilea = "*"
+
+# --- latex: compile the generated figure snippets locally (XeTeX engine) ---
+
+[feature.latex.dependencies]
+tectonic = "*"
+
+[environments]
+dev = ["dev", "data-stack", "latex"]
+jupyter = ["dev", "jupyter", "data-stack", "latex"]

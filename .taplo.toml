@@ -1,0 +1,6 @@
+# Schema validation disabled: by default taplo tries to fetch an online schema
+# catalog to validate against, which fails in offline/restricted environments
+# (verified directly - this broke in a sandboxed test with no network access).
+# Formatting and structural linting both still work with this off.
+[schema]
+enabled = false

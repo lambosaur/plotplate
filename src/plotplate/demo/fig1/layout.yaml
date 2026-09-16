@@ -1,0 +1,39 @@
+# Demo figure: Nature double column. Synthetic data only.
+schema: 1
+name: fig1
+journal: nature
+style_files: [../style.yaml]
+page:
+  width: double  # 183 mm from the journal preset
+  height: 150
+# Named alignment lines (page mm). Axes in different panels referencing the same guide
+# line up exactly once LaTeX places the panels next to each other.
+guides:
+  x:
+    left_axis: 11  # left spine of A/roc, C/scatter, D/main
+    right_axis: 181  # right spine of C/scatter, E/main
+  y:
+    row1_bottom: 45  # bottom spine of A/roc, A/prc and B heatmap
+    row3_bottom: 140  # bottom spine of D/main and E/main
+mosaic:
+  rows: [AB, CC, DE]
+  heights: [55, 42, 45]
+  gap: [4, 4]
+panels:
+  A:  # ROC + PRC side by side: one panel, two axes
+    axes:
+      roc: {left: left_axis, top: 5, right: 44, bottom: row1_bottom}
+      prc: {left: 55, top: 5, right: 88, bottom: row1_bottom}
+  B:  # seaborn clustermap, heatmap edges pinned
+    axes:
+      heatmap: {left: 110, top: 11, right: 158, bottom: row1_bottom}
+      cbar: {box: [97, 4, 1.8, 7]}
+  C:  # series of four scatterplots sharing one axes grid
+    axes:
+      scatter: {left: left_axis, top: 64, right: right_axis, bottom: 94, ncols: 4, wgap: 9}
+  D:
+    axes:
+      main: {left: left_axis, top: 109, right: 88, bottom: row3_bottom}
+  E:
+    axes:
+      main: {left: 105, top: 109, right: right_axis, bottom: row3_bottom}

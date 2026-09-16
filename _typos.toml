@@ -1,0 +1,14 @@
+# Domain-word allowlist for the `typos` spell checker. Also the source for
+# docs/glossary.md-style references; see project-meta's docs/glossary.md.
+#
+# Add a project- or domain-specific term here when `typos` false-positives on it.
+# Include a one-line comment saying what it is, not just that it's "correct".
+
+[default.extend-words]
+# project slug/name: always allowed
+"plotplate" = "plotplate"
+# false positive rate (ROC curves)
+fpr = "fpr"
+
+[files]
+extend-exclude = ["*.ipynb", "pixi.lock"]

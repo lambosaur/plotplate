@@ -1,0 +1,15 @@
+name: Generic A4
+description: A4 paper with 25 mm side margins; use while the target journal is undecided.
+applies_to: []
+sources: []
+verified: not applicable (house default)
+page:
+  widths: {full: 160, half: 78}
+  max_height: 247
+style:
+  font: {size: 7, small: 6, large: 7, min: 5, max: 8}
+deliverable:
+  composite: true
+  formats: [pdf]
+  raster_dpi: 600
+notes: []

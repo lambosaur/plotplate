@@ -1,0 +1,58 @@
+# Baseline style for every panel. Layering, later wins:
+#   this file -> journal preset `style:` -> layout `style_files:` -> layout `style:`
+# All sizes are at final print size: font sizes in pt, line widths in pt, lengths in mm.
+
+font:
+  # First available family is used; the checks warn when the first one is missing.
+  family: [Arial, Liberation Sans, Helvetica, DejaVu Sans]
+  size: 7  # axis labels, legend titles
+  small: 6  # tick labels, legend entries, annotations
+  large: 7  # axes titles, figure suptitle
+  min: 5  # hard minimum: smaller text is reported as an error
+  max: 8  # soft maximum: larger text is reported as a warning
+  max_spread: null  # pt; if set, a larger difference between sizes in one panel is a warning
+
+lines:
+  width: 0.75  # data lines
+  axes: 0.5  # spines, patch edges, grid
+  min: 0.25  # thinner visible lines are reported as a warning
+
+ticks:
+  length: 2.0  # pt
+  width: 0.5  # pt
+  pad: 1.5  # pt
+
+# Panel letters are drawn by LaTeX (and by the preview), never inside panel files.
+panel_label:
+  size: 8  # pt
+  weight: bold  # bold | normal
+  case: upper  # upper | lower
+  offset: [0.0, 0.0]  # mm, label top-left relative to the panel box top-left
+
+export:
+  formats: [pdf, svg, png]
+  # Transparent panel background: neighbouring panels whose boxes overlap (labels reaching
+  # into the gap) then do not paint over each other.
+  transparent: false
+  dpi: 600  # PNG resolution and rasterized artists inside PDF/SVG
+
+# Named colors shared by every panel, e.g. {parnet: "#1f77b4"}; see Layout.colors.
+colors: {}
+
+# Default color cycle: a bundled palette name (wong, tol-bright, tol-muted…), a list of
+# colors, or null for matplotlib's default. `plotplate palettes` lists the bundled ones.
+color_cycle: null
+
+# Raw matplotlib rcParams, applied last. House defaults, override freely.
+rc:
+  axes.spines.top: false
+  axes.spines.right: false
+  legend.frameon: false
+  legend.handlelength: 1.2
+  legend.handletextpad: 0.4
+  legend.borderaxespad: 0.2
+  legend.columnspacing: 1.0
+  axes.labelpad: 2.0
+  axes.titlepad: 3.0
+  lines.markersize: 3.0
+  scatter.edgecolors: none

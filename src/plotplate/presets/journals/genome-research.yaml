@@ -1,0 +1,28 @@
+name: Genome Research
+description: Cold Spring Harbor Laboratory Press.
+applies_to: [Genome Research]
+sources:
+  - https://genome.cshlp.org/site/misc/ifora_mspreparation.xhtml
+  - https://genome.cshlp.org/site/misc/ifora_acceptedmss.xhtml
+  - https://genome.cshlp.org/site/misc/ifora_digartsubm.xhtml
+verified: >-
+  2026-09-14, read from Internet Archive copies (2026 captures) of the official pages. Column
+  widths are not stated because figures are resized; the widths below are placeholders.
+page:
+  widths: {}  # not stated; set page.width explicitly in the layout
+  max_height: null
+style:
+  font: {family: [Helvetica, Arial, Liberation Sans], size: 9, small: 8, large: 10, min: 8, max: 10, max_spread: 2}
+  panel_label: {size: 12, weight: bold, case: upper}
+  lines: {min: 0.25}
+  export: {dpi: 600}
+deliverable:
+  composite: true  # multi-panel figures on separate pages are charged as individual figures
+  formats: [tiff, eps, pdf, jpeg, ai]
+  raster_dpi: 600
+notes:
+  - Helvetica or Arial, 8-10 pt; font sizes must not vary by more than 2 pt within a figure.
+  - Panel tags A, B, C as 12 pt bold capitals (the initial-submission page says 10 pt; the art guidelines say 12 pt).
+  - Rules at least 0.25 pt; all fonts embedded; RGB colour.
+  - Raster resolution - line art 1000-1200 dpi, halftones 300 dpi, combination 600-900 dpi.
+  - Figures are resized for publication; graphics should be proportionate to the text size.

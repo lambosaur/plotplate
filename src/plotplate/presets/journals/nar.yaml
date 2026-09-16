@@ -1,0 +1,21 @@
+name: Nucleic Acids Research
+description: Oxford University Press, NAR (NAR Cancer and NAR Genomics and Bioinformatics likely similar).
+applies_to: [Nucleic Acids Research]
+sources:
+  - https://academic.oup.com/nar/pages/general_instructions
+  - https://academic.oup.com/nar/pages/author-guidelines
+verified: >-
+  2026-09-14, NOT verified from the journal text. academic.oup.com blocks tools, and archived
+  copies contain no figure section. Values come from search-engine excerpts; confirm before submission.
+page:
+  widths: {single: 84, double: 178}
+  max_height: 230
+style:
+  font: {size: 7, small: 6, large: 7, min: 5, max: 8}
+deliverable:
+  composite: true  # assumed
+  formats: [pdf, eps, tiff]  # assumed
+  raster_dpi: 300
+notes:
+  - Reported - width at most 84 mm (single) or 178 mm (double) column, height at most 230 mm.
+  - Reported - plain sans-serif lettering, internally consistent, not smaller than 5 pt at final size.

@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.pixi/
+.venv/
+.env
+
+# direnv: .envrc is personal, .envrc.shared is the tracked template
+.envrc
+
+# Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Jupyter / Jupytext
+.ipynb_checkpoints/
+
+# Project-specific data/output (adjust paths to your storage layout)
+data/
+# Demo and example builds; panel outputs inside the packaged demo.
+.demo/
+src/pyplot_templated_optim/demo/**/data/
+src/pyplot_templated_optim/demo/**/panels/
+results/
+resources/
+logs/
+
+# Machine-specific config (see docs/snakemake-conventions.md); keep the .EXAMPLE tracked
+config/config.filepaths.*.yaml
+!config/config.filepaths.*.EXAMPLE.yaml
+
+# Scratch area for agents, and personal Claude Code settings
+.claude/scratch/
+.claude/settings.local.json

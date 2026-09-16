@@ -1,0 +1,11 @@
+# What must line up across panels, in page millimetres (checked by `plotplate align`).
+tolerance: 0.2
+rules:
+  - match: left  # left spine of the curve, scatter and box panels
+    of: [A.roc, C.scatter1, D.main]
+  - match: bottom  # baseline shared by the curves and the heatmap
+    of: [A.roc, A.prc, B.heatmap]
+  - match: bottom  # baseline of the bottom row
+    of: [D.main, E.main]
+  - match: right  # right edge of the scatter row and the scaling panel
+    of: [C.scatter4, E.main]

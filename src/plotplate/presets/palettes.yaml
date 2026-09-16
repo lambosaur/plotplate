@@ -1,0 +1,28 @@
+# Colour-blind-safe categorical palettes. Use as `style.color_cycle: <name>` or `plotplate.palette(name)`.
+
+wong:
+  description: Okabe-Ito colours as presented by Wong (2011); shown in Nature's figure guide.
+  source: >-
+    Wong, B. Points of view: Color blindness. Nat Methods 8, 441 (2011);
+    https://research-figure-guide.nature.com/figures/building-and-exporting-figure-panels/
+  colors: ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+
+wong-no-black:
+  description: Wong palette without black, when black is reserved for axes and text.
+  source: same as wong
+  colors: ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+
+tol-bright:
+  description: Paul Tol's "bright" qualitative scheme.
+  source: https://sronpersonalpages.nl/~pault/ (also shipped by SciencePlots as bright.mplstyle)
+  colors: ["#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE", "#AA3377", "#BBBBBB"]
+
+tol-muted:
+  description: Paul Tol's "muted" qualitative scheme.
+  source: https://sronpersonalpages.nl/~pault/
+  colors: ["#CC6677", "#332288", "#DDCC77", "#117733", "#88CCEE", "#882255", "#44AA99", "#999933", "#AA4499"]
+
+tol-high-contrast:
+  description: Paul Tol's "high-contrast" scheme, also readable in greyscale.
+  source: https://sronpersonalpages.nl/~pault/
+  colors: ["#004488", "#DDAA33", "#BB5566"]

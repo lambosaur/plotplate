@@ -1,0 +1,22 @@
+name: Genome Biology (BioMed Central)
+description: BMC journals share the same figure guidelines.
+applies_to: [Genome Biology, Genome Medicine, BMC Bioinformatics, BMC Genomics, other BMC journals]
+sources:
+  - https://genomebiology.biomedcentral.com/submission-guidelines/preparing-your-manuscript
+verified: 2026-09-14, read from an Internet Archive copy (2026 capture) of the official page
+page:
+  widths: {half: 85, full: 170}
+  max_height: 225  # figure and legend together
+style:
+  font: {size: 7, small: 6, large: 7, min: 5, max: 8}  # font sizes not stated; house defaults
+  lines: {min: 0.25}
+  export: {dpi: 300}
+deliverable:
+  composite: true  # multi-panel figures as a single composite file
+  formats: [pdf, eps, tiff, png, jpeg]
+  raster_dpi: 300
+notes:
+  - Figures are resized to 85 mm (half page) or 170 mm (full page) width; maximum height 225 mm including legend.
+  - Text must be legible at these dimensions (no size given); lines wider than 0.25 pt; fonts embedded.
+  - About 300 dpi at final size; vector figures preferably as PDF; maximum 10 MB per file.
+  - Multi-panel figures as one composite file; closely cropped; keys inside the graphic; titles and legends in the manuscript.

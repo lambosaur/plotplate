@@ -1,0 +1,25 @@
+name: Nature
+description: Nature and the Nature research journals using the Nature figure guide.
+applies_to: [Nature, Nature Methods, Nature Genetics, Nature Communications (check), other Nature Portfolio titles (check)]
+sources:
+  - https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
+  - https://research-figure-guide.nature.com/figures/building-and-exporting-figure-panels/
+verified: 2026-09-14, read directly from the official Nature research figure guide
+page:
+  widths: {single: 89, double: 183}
+  max_height: 170  # leaves room for the legend underneath
+style:
+  font: {family: [Arial, Helvetica, Liberation Sans], size: 7, small: 6, large: 7, min: 5, max: 7}
+  panel_label: {size: 8, weight: bold, case: lower}
+  export: {dpi: 450}
+deliverable:
+  composite: true
+  formats: [pdf, eps, ai]  # preferred; also layered psd, svg (plain), ps; NOT jpeg/tiff/png/tex
+  raster_dpi: 450
+notes:
+  - Text 5-7 pt; sans-serif (Arial or Helvetica); panel labels 8 pt bold, upright, lowercase.
+  - Vector files with editable text; do not outline text; embed TrueType 2 or 42 (matplotlib pdf.fonttype 42).
+  - Photographic images at 300 dpi minimum; 450 dpi or more recommended.
+  - RGB colour; avoid coloured text; accessible palette (the guide shows the Wong palette).
+  - Axis lines and tick marks required; axis labels with units in parentheses; no background gridlines.
+  - Figures may be reduced in production; submit at the smallest appropriate size.

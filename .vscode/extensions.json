@@ -1,0 +1,19 @@
+{
+  // Recommendations only. Not installing any of these still gets full enforcement
+  // through CI; see project-meta/docs/tooling.md and docs/vscode.md.
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "ms-toolsai.jupyter",
+    "ms-toolsai.vscode-jupyter-cell-tags",
+    "ms-toolsai.jupyter-renderers",
+    "congyiwu.vscode-jupytext",
+    "davidanson.vscode-markdownlint",
+    "editorconfig.editorconfig",
+    "mkhl.direnv",
+    "streetsidesoftware.code-spell-checker",
+    "usernamehw.errorlens",
+    "tamasfe.even-better-toml"
+  ]
+}

@@ -1,0 +1,6 @@
+# Everything in the examples is generated; keep only the scripts and the README.
+*
+!.gitignore
+!README.md
+!*/
+!*/make.py
