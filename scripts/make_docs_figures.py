@@ -57,7 +57,7 @@ def run() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         demo = Path(tmp) / "demo"
-        if main(["demo", str(demo), "--build"]) != 0:
+        if main(["demo", "figure", "--dir", str(demo), "--build"]) != 0:
             raise SystemExit("demo build reported errors")
 
         with pymupdf.open(demo / "legacy" / "manuscript.pdf") as doc:

@@ -59,8 +59,8 @@ lint-yaml = "yamllint ."
 typecheck = "mypy ."
 test = "pytest"
 # Full demo in the git-ignored .demo/ folder (same as a user running `plotplate demo`).
-demo = "plotplate demo examples/demo --build --force"
-hard-case = { cmd = "python make.py && plotplate from-pdf hard.pdf -o layout.yaml --axes --guides --wireframe wireframe.png && plotplate preview layout.yaml", cwd = "examples/hard-layout" }
+demo = "plotplate demo figure --dir examples/demo --build --force"
+hard-case = "plotplate demo hard-layout --dir examples/hard-layout --build --force"
 # Regenerate the README/docs images in docs/images/ from a fresh demo build.
 docs-figures = "python scripts/make_docs_figures.py"
 

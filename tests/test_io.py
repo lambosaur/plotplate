@@ -170,13 +170,15 @@ def test_demo_copy_and_build(tmp_path):
     from plotplate.cli import main
 
     dest = tmp_path / "demo"
-    assert main(["demo", str(dest)]) == 0
+    assert main(["demo"]) == 0  # lists the cases
+    assert main(["demo", "nope", "--dir", str(dest)]) == 1  # unknown case
+    assert main(["demo", "figure", "--dir", str(dest)]) == 0
     assert (dest / "legacy" / "manuscript.pdf").exists()
     assert (dest / "fig1" / "layout.yaml").exists()
-    assert main(["demo", str(dest)]) == 1  # refuses a non-empty folder
+    assert main(["demo", "figure", "--dir", str(dest)]) == 1  # refuses a non-empty folder
     pytest.importorskip("seaborn")
     pytest.importorskip("pyarrow")
-    assert main(["demo", str(dest), "--build", "--force"]) == 0
+    assert main(["demo", "figure", "--dir", str(dest), "--build", "--force"]) == 0
     assert (dest / "legacy" / "draft" / "layout.yaml").exists()
     assert (dest / "fig1" / "export" / "Figure1.pdf").exists()
     assert (dest / "fig1" / "preview-page.png").exists()
@@ -200,3 +202,33 @@ def test_svg_import_illustrator_style_ids(tmp_path):
     assert data["panels"]["B"]["box"][0] == pytest.approx(93.04, abs=0.01)
     assert data["panels"]["A"]["axes"]["roc"]["box"][:2] == pytest.approx([10.0, 5.0], abs=0.01)
     assert [i.code for i in issues] == ["svg-unlabelled"]
+
+
+def test_demo_hard_layout_case(tmp_path):
+    from plotplate.cli import main
+
+    dest = tmp_path / "hard"
+    assert main(["demo", "hard-layout", "--dir", str(dest), "--build"]) == 0
+    assert (dest / "hard.pdf").exists()
+    layout = load_yaml(dest / "layout.yaml")
+    assert len(layout["panels"]) == 7  # inset merged into its panel, pinwheel recovered
+    assert (dest / "preview.png").exists()
+
+
+def test_build_refuses_an_interpreter_without_plotplate(layout, tmp_path, capsys):
+    from plotplate.cli import main
+
+    _draw_all(layout)
+    fake = tmp_path / "python"
+    fake.write_text("#!/bin/sh\nexit 1\n")
+    fake.chmod(0o755)
+    assert main(["build", str(layout.path), "--python", str(fake)]) == 1
+    assert "cannot import plotplate" in capsys.readouterr().out
+
+
+def test_doctor_reports_the_current_environment(capsys):
+    from plotplate.cli import main
+
+    assert main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "versions agree" in out and "fonts:" in out

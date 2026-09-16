@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .config import dump_yaml, list_journals, load_journal, load_yaml
 from .layout import Issue, Layout
 
@@ -19,6 +21,72 @@ def _rel(path: str | Path) -> str:
         return str(Path(path).resolve().relative_to(Path.cwd()))
     except ValueError:
         return str(path)
+
+
+def _probe(python: str) -> dict[str, Any]:
+    """What a Python interpreter provides: its version, and the plotplate it imports."""
+    import subprocess
+
+    code = (
+        "import json,sys;"
+        "d={'python': sys.version.split()[0], 'executable': sys.executable};"
+        "\ntry:\n import plotplate;"
+        " d['plotplate']=plotplate.__version__; d['path']=plotplate.__file__\n"
+        "except Exception as exc:\n d['plotplate']=None; d['error']=str(exc)\n"
+        "print(json.dumps(d))"
+    )
+    try:
+        out = subprocess.run(
+            [python, "-c", code], capture_output=True, text=True, timeout=60, check=True
+        )
+        return dict(json.loads(out.stdout))
+    except Exception as exc:  # noqa: BLE001 - report, never crash a build on probing
+        return {"python": None, "executable": python, "plotplate": None, "error": str(exc)}
+
+
+def _missing_modules(python: str, names: tuple[str, ...]) -> list[str]:
+    """Which of ``names`` the given interpreter cannot import."""
+    import importlib.util
+    import subprocess
+
+    if Path(python).resolve() == Path(sys.executable).resolve():
+        return [name for name in names if importlib.util.find_spec(name) is None]
+    code = (
+        "import importlib.util,sys;"
+        "print(' '.join(n for n in sys.argv[1:] if importlib.util.find_spec(n) is None))"
+    )
+    out = subprocess.run(
+        [python, "-c", code, *names], capture_output=True, text=True, timeout=60, check=False
+    )
+    return out.stdout.split()
+
+
+def _environment_issue(python: str) -> Issue | None:
+    """Whether the interpreter that runs the notebooks agrees with this command.
+
+    Missing library: an error, because the notebooks cannot run at all.
+    Different version: a warning, because panels would be drawn by one version and checked
+    by another.
+    """
+    if Path(python).resolve() == Path(sys.executable).resolve():
+        return None
+    info = _probe(python)
+    if info.get("plotplate") is None:
+        return Issue(
+            "error",
+            "environment",
+            f"{python} cannot import plotplate ({info.get('error', 'unknown error')}); "
+            "install the library in the environment that runs the notebooks",
+        )
+    if info["plotplate"] != __version__:
+        return Issue(
+            "warning",
+            "environment",
+            f"this command is plotplate {__version__}, but {python} imports "
+            f"{info['plotplate']} ({info.get('path')}): panels would be drawn by one "
+            "version and checked by another",
+        )
+    return None
 
 
 def _print_issues(issues: list[Issue]) -> int:
@@ -296,33 +364,20 @@ def cmd_preview(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_demo(args: argparse.Namespace) -> int:
-    import importlib.util
+def _demo_cases() -> dict[str, Any]:
+    """Bundled demo cases: folder name -> package resource."""
+    root = resources.files("plotplate") / "demo"
+    return {
+        entry.name: entry for entry in sorted(root.iterdir(), key=lambda e: e.name) if entry.is_dir()
+    }
+
+
+def _build_figure_demo(dest: Path, python: str) -> int:
+    """Run the figure walkthrough: legacy PDF, tables, panels, export, page view."""
     import os
     import subprocess
 
     from .render import export_figure, page_view
-
-    dest = Path(args.dest)
-    if dest.exists() and any(dest.iterdir()) and not args.force:
-        print(f"{dest} is not empty (use --force to overwrite demo files)", file=sys.stderr)
-        return 1
-    _copy_tree(resources.files("plotplate") / "demo", dest)
-    print(f"copied the demo to {_rel(dest)}; read {_rel(dest / 'README.md')}")
-    if not args.build:
-        print(f"next: plotplate demo {dest} --build --force, or follow the README step by step")
-        return 0
-
-    needed = ("pandas", "pyarrow", "scipy", "seaborn")
-    missing = [m for m in needed if importlib.util.find_spec(m) is None]
-    if missing:
-        print(
-            f"cannot build: missing {', '.join(missing)} in the environment of plotplate.\n"
-            "  pipx: pipx inject plotplate pandas pyarrow scipy seaborn\n"
-            '  uv:   uv tool install "plotplate[demo] @ git+..." (reinstall)',
-            file=sys.stderr,
-        )
-        return 1
 
     print("\n[1/4] draft a layout from the legacy PDF")
     status = main(
@@ -335,9 +390,9 @@ def cmd_demo(args: argparse.Namespace) -> int:
     )  # fmt: skip
     print("\n[2/4] write the demo tables")
     env = {**os.environ, "MPLBACKEND": "Agg"}
-    subprocess.run([sys.executable, "make_data.py"], cwd=dest / "fig1", env=env, check=True)
+    subprocess.run([python, "make_data.py"], cwd=dest / "fig1", env=env, check=True)
     print("\n[3/4] draw the panels of the refined layout, then preview, LaTeX and checks")
-    if main(["build", str(dest / "fig1" / "layout.yaml")]) != 0:
+    if main(["build", str(dest / "fig1" / "layout.yaml"), "--python", python]) != 0:
         print("\nthe build failed: see the messages above (a panel script error, or failed checks)")
         return 1
     main(["wireframe", str(dest / "fig1" / "layout.yaml")])
@@ -356,6 +411,67 @@ def cmd_demo(args: argparse.Namespace) -> int:
     ):
         print(f"  {_rel(path)}")
     return status
+
+
+def _build_hard_layout_demo(dest: Path, python: str) -> int:
+    """Generate the awkward-arrangement PDF and read it back."""
+    import os
+    import subprocess
+
+    print("\n[1/3] build the PDF with awkward arrangements")
+    env = {**os.environ, "MPLBACKEND": "Agg"}
+    subprocess.run([python, "make.py"], cwd=dest, env=env, check=True)
+    print("\n[2/3] read it back")
+    status = main(
+        [
+            "from-pdf", str(dest / "hard.pdf"), "-o", str(dest / "layout.yaml"),
+            "--axes", "--guides", "--wireframe", str(dest / "wireframe.png"),
+        ]
+    )  # fmt: skip
+    print("\n[3/3] validate and preview (the overlaps are real: see the README)")
+    main(["validate", str(dest / "layout.yaml")])
+    main(["preview", str(dest / "layout.yaml")])
+    return status
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    cases = _demo_cases()
+    if args.list or args.case is None:
+        print("demo cases (plotplate demo <case> --dir <folder> --build):")
+        for name, entry in cases.items():
+            first = (entry / "README.md").read_text(encoding="utf-8").splitlines()
+            summary = next((line for line in first[1:] if line.strip()), "")
+            print(f"  {name:12s} {summary}")
+        return 0
+    if args.case not in cases:
+        print(f"unknown case {args.case!r}; have {', '.join(cases)}", file=sys.stderr)
+        return 1
+
+    dest = Path(args.dir) if args.dir else Path(f"plotplate-demo-{args.case}")
+    if dest.exists() and any(dest.iterdir()) and not args.force:
+        print(f"{_rel(dest)} is not empty (use --force to overwrite demo files)", file=sys.stderr)
+        return 1
+    _copy_tree(cases[args.case], dest)
+    print(f"copied the {args.case} demo to {_rel(dest)}; read {_rel(dest / 'README.md')}")
+    if not args.build:
+        print(f"next: plotplate demo {args.case} --dir {_rel(dest)} --build --force")
+        return 0
+
+    python = args.python or sys.executable
+    needed = ("pandas", "pyarrow", "scipy", "seaborn") if args.case == "figure" else ("matplotlib",)
+    missing = _missing_modules(python, needed)
+    if missing:
+        print(
+            f"cannot build: {python} is missing {', '.join(missing)}.\n"
+            "  run it from a project environment that has them (e.g. `pixi run plotplate ...`),\n"
+            "  or add them to this installation (`pixi global add --environment plotplate ...`,\n"
+            "  `pipx inject plotplate ...`), or pass --python /path/to/python",
+            file=sys.stderr,
+        )
+        return 1
+    if args.case == "figure":
+        return _build_figure_demo(dest, python)
+    return _build_hard_layout_demo(dest, python)
 
 
 def _copy_tree(source: Any, target: Path) -> None:
@@ -478,6 +594,12 @@ def cmd_build(args: argparse.Namespace) -> int:
     layout = Layout.load(args.layout)
     sources = panel_sources(layout)
     wanted = args.panels or list(layout.panels)
+    python = getattr(args, "python", None) or sys.executable
+    problem = _environment_issue(python)
+    if problem is not None:
+        print(f"  {problem}", flush=True)
+        if problem.level == "error":
+            return 1
     env = {**os.environ, "MPLBACKEND": "Agg"}
     failed = []
     for name in wanted:
@@ -486,9 +608,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             print(f"panel {name}: no script (panel_{name}_*.py or panels.{name}.source)")
             continue
         print(f"panel {name}: running {script.name}")
-        result = subprocess.run(
-            [sys.executable, script.name], cwd=script.parent, env=env, check=False
-        )
+        result = subprocess.run([python, script.name], cwd=script.parent, env=env, check=False)
         if result.returncode != 0:
             failed.append(name)
     paths = preview(layout)
@@ -499,6 +619,42 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"FAILED scripts: {failed}")
         return 1
     return status
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Report which plotplate runs the commands, which one the notebooks import, and the fonts."""
+    import plotplate
+
+    from .style import first_available_font
+
+    print("command (this process)")
+    print(f"  plotplate {__version__}")
+    print(f"  library   {Path(plotplate.__file__).parent}")
+    print(f"  python    {sys.version.split()[0]}  {sys.executable}")
+
+    python = args.python or sys.executable
+    if Path(python).resolve() != Path(sys.executable).resolve():
+        info = _probe(python)
+        print(f"\nnotebooks (--python {python})")
+        print(f"  plotplate {info.get('plotplate') or 'NOT INSTALLED'}")
+        print(f"  library   {info.get('path') or info.get('error', '')}")
+        print(f"  python    {info.get('python')}  {info.get('executable')}")
+
+    problem = _environment_issue(python)
+    print(f"\n{problem if problem else 'versions agree'}")
+
+    optional = ("pandas", "pyarrow", "scipy", "seaborn", "marsilea")
+    missing = _missing_modules(python, optional)
+    present = [name for name in optional if name not in missing]
+    print(f"\noptional packages there: have {present or 'none'}")
+    print(f"                         missing {missing or 'none'}")
+
+    families = ["Arial", "Helvetica", "Liberation Sans"]
+    found = [f for f in families if first_available_font([f])]
+    print(f"fonts: {found or 'none of ' + str(families)}")
+    if not found:
+        print("       install one, then run `plotplate fonts --rebuild`")
+    return 1 if problem is not None and problem.level == "error" else 0
 
 
 def cmd_fonts(args: argparse.Namespace) -> int:
@@ -689,6 +845,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("build", cmd_build, "Run panel scripts, then preview + LaTeX + check.")
     p.add_argument("layout")
     p.add_argument("panels", nargs="*", help="only these panels (default: all)")
+    p.add_argument("--python", help="interpreter that runs the notebooks (default: this one)")
 
     p = add("export", cmd_export, "Write the final single-file figure (.pdf, .tif, .png).")
     p.add_argument("layout")
@@ -697,10 +854,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("palettes", cmd_palettes, "List bundled colour-blind-safe palettes.")
 
-    p = add("demo", cmd_demo, "Copy the demo (legacy PDF, layout, panels, export) into a folder.")
-    p.add_argument("dest")
-    p.add_argument("--build", action="store_true", help="also run every step (needs the demo extra)")
+    p = add("demo", cmd_demo, "Copy a demo case into a folder (and optionally run it).")
+    p.add_argument("case", nargs="?", help="demo case; omit to list them")
+    p.add_argument("--dir", help="where to copy it (default: ./plotplate-demo-<case>)")
+    p.add_argument("--build", action="store_true", help="also run every step of the case")
+    p.add_argument("--python", help="interpreter that runs the notebooks (default: this one)")
+    p.add_argument("--list", action="store_true", help="list the cases")
     p.add_argument("--force", action="store_true", help="write into a non-empty folder")
+
+    p = add("doctor", cmd_doctor, "Report versions, environments and fonts; check they agree.")
+    p.add_argument("--python", help="interpreter that runs the notebooks")
 
     p = add("fonts", cmd_fonts, "Report whether fonts are visible to matplotlib.")
     p.add_argument("family", nargs="*")

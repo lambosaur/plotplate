@@ -1,6 +1,4 @@
-# Everything in the examples is generated; keep only the scripts and the README.
+# Everything in the examples is generated; keep only this file and the folder README.
 *
 !.gitignore
-!README.md
-!*/
-!*/make.py
+!/README.md

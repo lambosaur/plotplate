@@ -30,11 +30,12 @@ plotplate = [
   "presets/*.yaml",
   "presets/journals/*.yaml",
   "skills/*/*.md",
-  "demo/*.md",
-  "demo/*.yaml",
-  "demo/fig1/*",
-  "demo/fig1/variants/*",
-  "demo/legacy/*",
+  "demo/*/*.md",
+  "demo/*/*.py",
+  "demo/*/*.yaml",
+  "demo/figure/fig1/*",
+  "demo/figure/fig1/variants/*",
+  "demo/figure/legacy/*",
 ]
 
 [tool.pytest.ini_options]
@@ -88,7 +89,7 @@ convention = "google"
 combine-as-imports = true
 
 [tool.mypy]
-exclude = ["^build/", "^\\.demo/", "^\\.pixi/"]
+exclude = ["^build/", "^\\.demo/", "^\\.pixi/", "^examples/", "^\\.tox/"]
 python_version = "3.12"
 warn_return_any = true
 disallow_untyped_defs = true

@@ -61,8 +61,25 @@ plotplate = { git = "https://github.com/<org>/plotplate.git", branch = "main" }
 Run the commands through that environment (`pixi run plotplate build figures/fig1/layout.yaml`): `plotplate build` executes your panel notebooks with the project's Python, where pandas, seaborn and the rest already live.
 `pip install` works the same way in a non-pixi project.
 
-If you prefer to run the *user-wide* command on notebooks, that environment also needs their imports: `pixi global add --environment plotplate pandas seaborn …`, or `pipx inject plotplate pandas seaborn …`.
-Nothing in plotplate itself requires them.
+### Which installation runs what
+
+| commands | what they need | where to run them |
+| --- | --- | --- |
+| everything except `build` (layouts, wireframes, previews, exports, diffs, checks) | plotplate only | either installation |
+| `plotplate build`, `plotplate demo --build` | they execute *your* panel notebooks | the project environment, because the notebooks import plotplate and your own packages |
+
+So: use the user-wide command for layout work anywhere, and run builds through the project (`pixi run plotplate build …`).
+
+Two installations can disagree, and the tools say so instead of letting it pass:
+
+```sh
+plotplate doctor              # both versions, both paths, fonts, optional packages
+plotplate doctor --python .pixi/envs/default/bin/python
+```
+
+`plotplate build` refuses to run when the interpreter cannot import plotplate, and warns when its version differs from the command's.
+`--python /path/to/python` picks the interpreter that runs the notebooks, so one command can drive another environment on purpose.
+Pin the same tag in both installations to keep them equal.
 
 ### 3. The agent skills (optional)
 
@@ -79,10 +96,13 @@ Install Arial (on Debian/Ubuntu: `ttf-mscorefonts-installer`), then run `plotpla
 ## Try the demo
 
 ```sh
-plotplate demo ~/plotplate-demo --build
+plotplate demo                                       # list the cases
+plotplate demo figure --dir ~/plotplate-demo --build  # the full walkthrough
+plotplate demo hard-layout --dir ~/hard --build       # awkward arrangements, for from-pdf
 ```
 
-The demo panels use pandas, pyarrow, scipy and seaborn, so they must be in the environment that runs `plotplate`: `pixi global add --environment plotplate pandas pyarrow scipy seaborn`, `pipx inject plotplate …`, or simply run it from a project environment that already has them.
+Both cases ship inside the package, so they run from anywhere.
+The `figure` case draws panels, so it needs pandas, pyarrow, scipy and seaborn in the environment that runs it: run it from a project environment that has them, add them to the tool (`pixi global add --environment plotplate …`, `pipx inject plotplate …`), or pass `--python`.
 
 This copies a complete example into `~/plotplate-demo` and runs every step shown in the picture above.
 [The demo README](src/plotplate/demo/README.md) walks through it.
@@ -181,6 +201,8 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 | `plotplate preview` / `plotplate latex` / `plotplate check` | individual build steps |
 | `plotplate bundle` / `plotplate export` | deliver to Overleaf or to a journal |
 | `plotplate journals` / `plotplate palettes` / `plotplate fonts` / `plotplate skills` | presets, colours, fonts, agent skills |
+| `plotplate doctor` | which versions and environments are in play |
+| `plotplate demo` | copy and run a bundled example case |
 
 ## Contributing
 

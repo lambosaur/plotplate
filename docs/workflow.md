@@ -40,8 +40,12 @@ Two installations serve two purposes:
 | the library imported by panel notebooks, and `plotplate` | the project environment where notebooks run | `pixi add "python>=3.12"`, then `pixi add --pypi plotplate --git https://github.com/<org>/plotplate.git --branch main` |
 | the `plotplate` command alone | once per user, isolated | `pipx install "plotplate @ git+https://github.com/<org>/plotplate"` or `uv tool install …` |
 
-`plotplate build` runs panel notebooks with the Python of the `plotplate` installation, so that environment also needs the packages the notebooks import.
-Add them with `pipx inject plotplate pandas seaborn …`, or run `plotplate` from the project environment (`pixi run plotplate build …`) where they are already installed.
+Only `plotplate build` (and `plotplate demo --build`) executes your notebooks; every other command needs plotplate alone.
+Run builds from the project environment (`pixi run plotplate build …`), where the notebooks' imports live.
+
+When two installations exist, they can drift apart.
+`plotplate doctor` prints both versions and paths, `plotplate build` refuses an interpreter that cannot import plotplate, and warns when its version differs from the command's.
+`--python /path/to/python` runs the notebooks with a chosen interpreter.
 
 For a pinned version in a Pixi project:
 
