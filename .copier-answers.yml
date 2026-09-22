@@ -1,6 +1,6 @@
 # Changes here are written by Copier. Do not edit by hand.
 _commit: v0.7.3
-_src_path: /home/l10n/projects/templates/project-meta
+_src_path: /home/l10n/projects/lambosaur/project-meta-seed
 has_snakemake: false
 meta_repo_path: ''
 package_slug: plotplate
