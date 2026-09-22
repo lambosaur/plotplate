@@ -10,26 +10,35 @@ The layout decides size and alignment; the notebook decides content.
 
 ## Rules
 
-- Get the figure from the layout: `panel = plotplate.Layout.load("layout.yaml").panel("A")`, then `panel.figure()` / `panel.axes(fig, name)` / `panel.subplots()`.
-  For seaborn figure-level plots pass `figsize=panel.figsize` and call `panel.fit(fig)` (clustermap: `place_clustermap`).
-  For Marsilea boards use `fit_marsilea(build, panel, main=...)`; if it reports missing millimetres, reduce label padding or propose a layout change.
-- Never pass another `figsize`, never `bbox_inches="tight"`, never `tight_layout()` on axes placed from the layout.
+- Get the figure from the layout: `panel = plotplate.Layout.load("layout.yaml").panel("A")`, then
+  `panel.figure()` / `panel.axes(fig, name)` / `panel.subplots()`.
+  For seaborn figure-level plots pass `figsize=panel.figsize` and call `panel.fit(fig)` (clustermap:
+  `place_clustermap`).
+  For Marsilea boards use `fit_marsilea(build, panel, main=...)`; if it reports missing millimetres,
+  reduce label padding or propose a layout change.
+- Never pass another `figsize`, never `bbox_inches="tight"`, never `tight_layout()` on axes placed
+  from the layout.
 - Never hard-code font sizes in pt unless required; rely on the style (`font.size`, `small`, `large`).
   If a size must be set, use `layout.style["font"][...]`.
 - Colors of shared entities come from `panel.colors` (project `style.yaml`), not literals.
 - Save only with `panel.save(fig, source="<notebook file>")`.
   It writes `panels/<X>.{pdf,svg,png}` and `panels/<X>.json` with the check results.
-- Data comes from precomputed tables in `data/`; keep computation out of panel notebooks except light reshaping.
+- Data comes from precomputed tables in `data/`; keep computation out of panel notebooks except light
+  reshaping.
 
-Structure the notebook with one drawing function per layout axes entry (see `docs/panel-recipes.md`), so later layout changes only move function calls.
-For spans or nested grids inside a region, use `panel.gridspec(fig, region, nrows, ncols, wgap=, hgap=)`.
+Structure the notebook with one drawing function per layout axes entry (see `docs/panel-recipes.md`),
+so later layout changes only move function calls.
+For spans or nested grids inside a region, use
+`panel.gridspec(fig, region, nrows, ncols, wgap=, hgap=)`.
 
 ## Loop
 
 1. Run the notebook (or `plotplate build layout.yaml A` from the figure folder).
 1. Read the report printed by `save` (also in `panels/A.json`).
-1. Read `panels/A.png` with the Read tool to look at the result; `preview.png` to see it next to other panels.
-1. Fix and repeat until the report has no errors, and warnings are either fixed or explained to the user.
+1. Read `panels/A.png` with the Read tool to look at the result; `preview.png` to see it next to other
+   panels.
+1. Fix and repeat until the report has no errors, and warnings are either fixed or explained to the
+   user.
 
 ## Fixes by issue code
 
@@ -48,5 +57,7 @@ For spans or nested grids inside a region, use `panel.gridspec(fig, region, nrow
 ## Layout changes need the user
 
 Changing `layout.yaml` (boxes, guides, axes rectangles) affects other panels and alignment.
-Propose the change with its effect ("C's left axis would no longer align with A and D") and let the user decide.
-When a fix for one issue reintroduces another (e.g. rotating labels makes them clip), state the tradeoff instead of silently choosing.
+Propose the change with its effect ("C's left axis would no longer align with A and D") and let the
+user decide.
+When a fix for one issue reintroduces another (e.g. rotating labels makes them clip), state the
+tradeoff instead of silently choosing.

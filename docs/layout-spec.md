@@ -11,8 +11,8 @@ Python, the preview, the Inkscape SVG and the generated LaTeX all read it.
 
 - All lengths are millimetres.
 - Font sizes and line widths are points (1/72 inch).
-- Page coordinates have their origin at the top-left corner of the figure area.
-  x grows to the right, y grows downwards.
+- Page coordinates have their origin at the top-left corner of the figure area. x grows to the right,
+  y grows downwards.
 - A box is `[x, y, w, h]`: top-left corner, then width and height.
 - Sizes are final print sizes.
   LaTeX includes panels at scale 1.0, so a 6 pt label prints at 6 pt.
@@ -81,19 +81,25 @@ Three levels, each with its own name:
 | panel | the panel key (`A`, or `roc_prc` with `labels: auto`) | you, or a letter read from a PDF | the letter, drawn by LaTeX or `plotplate export` |
 | plotting area | the axes name (`roc`, `heatmap`, `ax1`) | you, or `plotplate from-pdf --axes` | usually none; add sub-labels in the panel code if needed |
 
-A panel is one matplotlib figure, whatever it contains: one axes, a grid of axes, or a library figure such as a seaborn clustermap (which is itself several axes).
-Its axes entries name the areas you want to place or align; areas you do not name are left to matplotlib.
-Sub-labels inside a panel (A1, A2 or a, b) are text drawn by the panel code, not layout entries; only panel letters are drawn by LaTeX.
+A panel is one matplotlib figure, whatever it contains: one axes, a grid of axes, or a library figure
+such as a seaborn clustermap (which is itself several axes).
+Its axes entries name the areas you want to place or align; areas you do not name are left to
+matplotlib.
+Sub-labels inside a panel (A1, A2 or a, b) are text drawn by the panel code, not layout entries; only
+panel letters are drawn by LaTeX.
 
 ## Panel keys and letters
 
-A panel's key identifies it everywhere: `layout.yaml`, `panels/<key>.pdf`, and the notebook named `panel_<key>_*.py`.
+A panel's key identifies it everywhere: `layout.yaml`, `panels/<key>.pdf`, and the notebook named
+`panel_<key>_*.py`.
 
-- `labels: id` (default): the key is also the letter, so `A` is panel A.
-  Simple, but re-lettering a figure means renaming keys, notebooks and files.
-- `labels: auto`: keys are stable names (`roc_prc`, `heatmap`), and letters follow the reading order of the boxes.
+- `labels: id` (default): the key is also the letter, so `A` is panel A. Simple, but re-lettering a
+  figure means renaming keys, notebooks and files.
+- `labels: auto`: keys are stable names (`roc_prc`, `heatmap`), and letters follow the reading order
+  of the boxes.
   Inserting a panel re-letters the others without renaming anything.
-  `label: {text: "x"}` still overrides one panel, and `label: false` leaves a panel unlettered (and unlabelled in the reading order).
+  `label: {text: "x"}` still overrides one panel, and `label: false` leaves a panel unlettered (and
+  unlabelled in the reading order).
 
 `plotplate relabel layout.yaml` freezes the current letters as explicit `label` entries.
 
@@ -107,7 +113,8 @@ A panel's key identifies it everywhere: `layout.yaml`, `panels/<key>.pdf`, and t
 | `margins` | `[left, top, right, bottom]` inside the box; creates axes `main` |
 | `source` | script that draws the panel, for `plotplate build` |
 
-A panel without `axes` or `margins` gets one axes from `panel.subplots()`, placed by constrained layout inside the box.
+A panel without `axes` or `margins` gets one axes from `panel.subplots()`, placed by constrained
+layout inside the box.
 
 ## Axes entries
 
@@ -127,12 +134,14 @@ A guide reference is a guide name with an optional offset: `left_axis`, `row1_bo
 Guides are always page coordinates, also when `ref: panel`.
 
 Two axes in different panels line up exactly when they use the same guide.
-This works although each panel is a separate matplotlib figure, because every panel file has exactly the size of its box.
+This works although each panel is a separate matplotlib figure, because every panel file has exactly
+the size of its box.
 
 ## Panels spanning rows or columns
 
 Boxes are free rectangles, so any arrangement works, including panels spanning several rows.
-With `mosaic`, repeat a letter over the cells it covers; use as many cells as the finest division needs:
+With `mosaic`, repeat a letter over the cells it covers; use as many cells as the finest division
+needs:
 
 ```yaml
 page: {width: double, height: 168}
@@ -143,7 +152,8 @@ mosaic:                  # tall panel D on the right of A, B, C; E below D
   gap: [4, 3]
 ```
 
-A row whose panels do not share column boundaries with the rows above needs a finer grid (for example six columns, with `AABBCC` above `DDDEEE`), or explicit `box` entries.
+A row whose panels do not share column boundaries with the rows above needs a finer grid (for example
+six columns, with `AABBCC` above `DDDEEE`), or explicit `box` entries.
 
 ## Style
 

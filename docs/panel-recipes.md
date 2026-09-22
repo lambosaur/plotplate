@@ -4,7 +4,8 @@
 
 ## Scope
 
-This file shows how to write panel code for common situations, what to avoid, and how complex compositions are handled.
+This file shows how to write panel code for common situations, what to avoid, and how complex
+compositions are handled.
 Every recipe below was run as written; the results passed all checks.
 
 ## Dos and don'ts
@@ -33,11 +34,16 @@ These are fine:
 
 `text-clipped` means some text extends beyond the panel edge.
 
-1. **Panel without layout axes:** use `panel.subplots()` (constrained layout); labels are fitted automatically.
+1. **Panel without layout axes:** use `panel.subplots()` (constrained layout); labels are fitted
+   automatically.
 1. **Panel with layout axes:** the rectangle leaves too little room for the tick and axis labels.
-   Enlarge the margin in `layout.yaml` (move the axes `left`, or the guide it uses), or shorten the labels.
-   Moving the axes in code is not the fix: it breaks alignment with other panels, and the check reports it.
-1. **Library figures (clustermap, Marsilea):** reduce label padding or dendrogram sizes, or give the main rectangle more room; `place_clustermap` and `fit_marsilea` report how many millimetres are missing.
+   Enlarge the margin in `layout.yaml` (move the axes `left`, or the guide it uses), or shorten the
+   labels.
+   Moving the axes in code is not the fix: it breaks alignment with other panels, and the check
+   reports it.
+1. **Library figures (clustermap, Marsilea):** reduce label padding or dendrogram sizes, or give the
+   main rectangle more room; `place_clustermap` and `fit_marsilea` report how many millimetres are
+   missing.
 
 ## Recipe 1: free-form content
 
@@ -75,7 +81,8 @@ with panel.style():
 panel.save(grid.figure)
 ```
 
-Dendrograms and colour strips are placed left of and above the heatmap rectangle; leave room for them in the layout.
+Dendrograms and colour strips are placed left of and above the heatmap rectangle; leave room for them
+in the layout.
 
 ## Recipe 3: stacked tracks with different heights
 
@@ -94,7 +101,8 @@ top, middle, bottom = panel.axes(fig, "tracks")[:, 0]
 
 ## Recipe 4: a gridspec with spans
 
-For arrangements a regular grid cannot express, create a matplotlib GridSpec inside a layout region; gaps are in mm.
+For arrangements a regular grid cannot express, create a matplotlib GridSpec inside a layout region;
+gaps are in mm.
 
 ```python
 fig = panel.figure()
@@ -105,17 +113,22 @@ small_bottom = fig.add_subplot(gs[1, 1])
 ```
 
 `gs[i, j].subgridspec(...)` nests further.
-Axes made this way are not position-checked; keep the figure's layout engine off (the `panel.figure()` default).
+Axes made this way are not position-checked; keep the figure's layout engine off (the `panel.figure()`
+default).
 
 ## Overlapping panel boxes
 
-Panel boxes may overlap: in many published figures a panel's labels reach into the space of its neighbour.
-`plotplate validate` reports the overlap as a warning, because it is usually unintended, and because panels are opaque by default: the panel drawn later paints over the earlier one.
+Panel boxes may overlap: in many published figures a panel's labels reach into the space of its
+neighbour.
+`plotplate validate` reports the overlap as a warning, because it is usually unintended, and because
+panels are opaque by default: the panel drawn later paints over the earlier one.
 
 Two ways to handle it:
 
-- **Separate the boxes** (the usual fix): move an edge, or run `plotplate tidy --fill-gap 4` to give every panel its own space.
-- **Keep the overlap and make panels transparent**: set `style.export.transparent: true`, so only the drawn content covers the neighbour.
+- **Separate the boxes** (the usual fix): move an edge, or run `plotplate tidy --fill-gap 4` to give
+  every panel its own space.
+- **Keep the overlap and make panels transparent**: set `style.export.transparent: true`, so only the
+  drawn content covers the neighbour.
   Check the preview: overlapping *content* is still a problem, only empty margins become harmless.
 
 ## Structure panel notebooks for later changes
@@ -123,15 +136,19 @@ Two ways to handle it:
 Layouts change: panels move, merge, split.
 A consistent structure keeps those changes mechanical:
 
-- One drawing function per layout axes entry, taking the axes and the data: `draw_roc(ax, roc)`, `draw_prc(ax, pr)`.
+- One drawing function per layout axes entry, taking the axes and the data:
+  `draw_roc(ax, roc)`, `draw_prc(ax, pr)`.
 - The notebook only loads data, creates the figure through the panel, calls the functions, and saves.
-- For library figures (clustermap, Marsilea), one function creates and places the whole library figure.
+- For library figures (clustermap, Marsilea), one function creates and places the whole library
+  figure.
 
-Moving the PRC curve from panel A to its own panel B then means: one new axes entry in the layout, and moving one function call to a new notebook.
+Moving the PRC curve from panel A to its own panel B then means: one new axes entry in the layout, and
+moving one function call to a new notebook.
 
 ## Complex compositions
 
-Panels are free rectangles, so rows of different heights and panels spanning several rows or columns are supported ([layout-spec.md](layout-spec.md#panels-spanning-rows-or-columns)).
+Panels are free rectangles, so rows of different heights and panels spanning several rows or columns
+are supported ([layout-spec.md](layout-spec.md#panels-spanning-rows-or-columns)).
 Two published-figure arrangements were rebuilt and read back:
 
 | arrangement | `plotplate from-pdf` (placed panels) | `plotplate detect` (image) |
@@ -139,5 +156,7 @@ Two published-figure arrangements were rebuilt and read back:
 | 5 panels: a tall panel beside three stacked panels, one panel below it | all boxes exact, letters named every panel | overlap with the true box 0.96-0.98 |
 | 10 panels: a tall panel beside a row of two, a wide panel below, two rows of three with different column boundaries | all boxes exact, letters named every panel | overlap with the true box 0.96-0.98 |
 
-Image detection splits along white gutters, so it needs every panel to be separable by straight cuts (which covers nearly all journal figures).
-Interlocking arrangements where no straight gutter separates panels need `plotplate from-pdf` or a drawing (`plotplate svg-import`).
+Image detection splits along white gutters, so it needs every panel to be separable by straight cuts
+(which covers nearly all journal figures).
+Interlocking arrangements where no straight gutter separates panels need `plotplate from-pdf` or a
+drawing (`plotplate svg-import`).

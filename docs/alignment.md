@@ -4,12 +4,14 @@
 
 ## Scope
 
-This file describes how panels drawn by different notebooks end up visually aligned, and how that alignment is checked with numbers instead of by eye.
+This file describes how panels drawn by different notebooks end up visually aligned, and how that
+alignment is checked with numbers instead of by eye.
 
 ## The problem
 
-Each panel is a separate matplotlib figure, so nothing inside panel B can "see" panel A.
-What makes a figure look deliberate, though, is shared lines across panels: one baseline under a row, one left spine down a column.
+Each panel is a separate matplotlib figure, so nothing inside panel B can "see" panel A. What makes a
+figure look deliberate, though, is shared lines across panels: one baseline under a row, one left
+spine down a column.
 
 Two mechanisms cover it, and they work in opposite directions:
 
@@ -19,7 +21,8 @@ Two mechanisms cover it, and they work in opposite directions:
 | **alignment rules** | output: they measure what happened | `alignment.yaml` + `panels/<panel>.json` | "do these features actually coincide, and by how much do they differ?" |
 
 Guides alone are enough when every aligned feature is an axes rectangle you placed.
-Rules are needed when the feature is not a placed rectangle: a library figure's heatmap, a bar baseline, a boxplot without spines.
+Rules are needed when the feature is not a placed rectangle: a library figure's heatmap, a bar
+baseline, a boxplot without spines.
 
 ## Guides: declaring shared lines
 
@@ -39,7 +42,8 @@ A guide is a number in the layout, not a measurement of another panel, so:
 - panel B's heatmap can sit on `row1_bottom` before panel A exists;
 - when a guide moves, `plotplate build` reruns every panel that uses it.
 
-`plotplate from-pdf --axes --guides` proposes guides from an existing figure, by finding edges that several panels already share.
+`plotplate from-pdf --axes --guides` proposes guides from an existing figure, by finding edges that
+several panels already share.
 
 ## What each panel reports
 
@@ -55,8 +59,10 @@ A guide is a number in the layout, not a measurement of another panel, so:
 }
 ```
 
-- Every visible axes is included, also the ones a library created (a clustermap's `heatmap`, `row_dendrogram`, `cbar`).
-- `spines` says which edges are actually drawn, so a check can report "this edge has no spine; the axes edge was used".
+- Every visible axes is included, also the ones a library created (a clustermap's `heatmap`,
+  `row_dendrogram`, `cbar`).
+- `spines` says which edges are actually drawn, so a check can report "this edge has no spine; the
+  axes edge was used".
 - Coordinates are page millimetres, comparable across panels.
 
 For features that are not an axes edge, register a point in the panel code:
@@ -102,4 +108,5 @@ plotplate preview layout.yaml --rules        # draws the rule lines across the p
 1. Fix in the layout, not in panel code: move the guide or the axes rectangle, then `plotplate build`.
 1. `plotplate preview --rules` to look at the result with the lines drawn.
 
-An agent can run the same loop: the numbers come from the JSON files, so no visual estimation is involved.
+An agent can run the same loop: the numbers come from the JSON files, so no visual estimation is
+involved.

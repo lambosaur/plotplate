@@ -6,14 +6,17 @@ Build multi-panel figures from independent matplotlib panels that fit a layout e
 
 ## Why
 
-Panels exported from notebooks at "readable" sizes get rescaled or cropped when assembled in LaTeX, Illustrator or Inkscape.
+Panels exported from notebooks at "readable" sizes get rescaled or cropped when assembled in LaTeX,
+Illustrator or Inkscape.
 Each panel then prints with different font sizes and line widths.
 
 This tool reverses the order:
 
-1. You describe the figure once, in a `layout.yaml`: page width, panel boxes, alignment guides, journal rules.
+1. You describe the figure once, in a `layout.yaml`: page width, panel boxes, alignment guides,
+   journal rules.
 1. Each panel is drawn by its own notebook, at exactly the size of its box.
-1. The panels are assembled at scale 1.0, so every font prints at its true size, and the checks can prove it.
+1. The panels are assembled at scale 1.0, so every font prints at its true size, and the checks can
+   prove it.
 
 ## Install
 
@@ -58,7 +61,9 @@ which writes:
 plotplate = { git = "https://github.com/<org>/plotplate.git", branch = "main" }
 ```
 
-Run the commands through that environment (`pixi run plotplate build figures/fig1/layout.yaml`): `plotplate build` executes your panel notebooks with the project's Python, where pandas, seaborn and the rest already live.
+Run the commands through that environment (`pixi run plotplate build figures/fig1/layout.yaml`):
+`plotplate build` executes your panel notebooks with the project's Python, where pandas, seaborn and
+the rest already live.
 `pip install` works the same way in a non-pixi project.
 
 ### Which installation runs what
@@ -68,7 +73,8 @@ Run the commands through that environment (`pixi run plotplate build figures/fig
 | everything except `build` (layouts, wireframes, previews, exports, diffs, checks) | plotplate only | either installation |
 | `plotplate build`, `plotplate demo --build` | they execute *your* panel notebooks | the project environment, because the notebooks import plotplate and your own packages |
 
-So: use the user-wide command for layout work anywhere, and run builds through the project (`pixi run plotplate build …`).
+So: use the user-wide command for layout work anywhere, and run builds through the project
+(`pixi run plotplate build …`).
 
 Two installations can disagree, and the tools say so instead of letting it pass:
 
@@ -77,8 +83,10 @@ plotplate doctor              # both versions, both paths, fonts, optional packa
 plotplate doctor --python .pixi/envs/default/bin/python
 ```
 
-`plotplate build` refuses to run when the interpreter cannot import plotplate, and warns when its version differs from the command's.
-`--python /path/to/python` picks the interpreter that runs the notebooks, so one command can drive another environment on purpose.
+`plotplate build` refuses to run when the interpreter cannot import plotplate, and warns when its
+version differs from the command's.
+`--python /path/to/python` picks the interpreter that runs the notebooks, so one command can drive
+another environment on purpose.
 Pin the same tag in both installations to keep them equal.
 
 ### 3. The agent skills (optional)
@@ -91,7 +99,8 @@ plotplate skills --print                   # any other agent: paste, or append t
 
 ### Fonts
 
-Install Arial (on Debian/Ubuntu: `ttf-mscorefonts-installer`), then run `plotplate fonts --rebuild` once.
+Install Arial (on Debian/Ubuntu: `ttf-mscorefonts-installer`), then run `plotplate fonts --rebuild`
+once.
 
 ## Try the demo
 
@@ -102,7 +111,9 @@ plotplate demo hard-layout --dir ~/hard --build       # awkward arrangements, fo
 ```
 
 Both cases ship inside the package, so they run from anywhere.
-The `figure` case draws panels, so it needs pandas, pyarrow, scipy and seaborn in the environment that runs it: run it from a project environment that has them, add them to the tool (`pixi global add --environment plotplate …`, `pipx inject plotplate …`), or pass `--python`.
+The `figure` case draws panels, so it needs pandas, pyarrow, scipy and seaborn in the environment that
+runs it: run it from a project environment that has them, add them to the tool
+(`pixi global add --environment plotplate …`, `pipx inject plotplate …`), or pass `--python`.
 
 This copies a complete example into `~/plotplate-demo` and runs every step shown in the picture above.
 [The demo README](src/plotplate/demo/README.md) walks through it.
@@ -137,12 +148,17 @@ Pick the source you have:
 | a drawing (Inkscape, Illustrator) | `plotplate svg-import drawing.svg -o fig1/layout.yaml` | one rectangle per panel, in a layer named `panels` |
 | nothing yet | `plotplate new fig1/layout.yaml --journal nature --width double --height 150 --mosaic "AB/CC/DE"` | a grid to adjust |
 
-Always look at the result: `plotplate wireframe fig1/layout.yaml` draws the boxes (optionally over the source with `--background`).
-To adjust boxes by hand, `plotplate svg-export fig1/layout.yaml`, move the rectangles in Inkscape, then `plotplate svg-import`.
-[docs/layout-sources.md](docs/layout-sources.md) explains what each source must contain; [docs/layout-spec.md](docs/layout-spec.md) documents the file.
+Always look at the result: `plotplate wireframe fig1/layout.yaml` draws the boxes (optionally over the
+source with `--background`).
+To adjust boxes by hand, `plotplate svg-export fig1/layout.yaml`, move the rectangles in Inkscape,
+then `plotplate svg-import`.
+[docs/layout-sources.md](docs/layout-sources.md) explains what each source must contain;
+[docs/layout-spec.md](docs/layout-spec.md) documents the file.
 
-No language model is needed for any of these commands: the PDF reader follows the page's drawing instructions, and image detection splits along blank gutters.
-An agent can drive them, and decide the parts that are judgement (grouping, naming, which edges should align).
+No language model is needed for any of these commands: the PDF reader follows the page's drawing
+instructions, and image detection splits along blank gutters.
+An agent can drive them, and decide the parts that are judgement (grouping, naming, which edges should
+align).
 
 ## Step 2: draw each panel
 
@@ -157,7 +173,8 @@ panel.save(fig)  # panels/A.pdf, .svg, .png + checks (font sizes, clipping, over
 ```
 
 Seaborn clustermaps, Marsilea heatmaps, gridspecs and panels combining several of them are supported.
-[docs/panel-recipes.md](docs/panel-recipes.md) shows how, and lists what not to do (`tight_layout`, `bbox_inches="tight"`, moving axes by hand).
+[docs/panel-recipes.md](docs/panel-recipes.md) shows how, and lists what not to do
+(`tight_layout`, `bbox_inches="tight"`, moving axes by hand).
 
 ## Step 3: assemble and deliver
 
@@ -169,8 +186,10 @@ plotplate bundle fig1/layout.yaml build/overleaf/fig1     # .tex + panel PDFs to
 plotplate export fig1/layout.yaml -o Figure1.pdf          # single production file (.pdf or .tif)
 ```
 
-Every command writes files and prints text; none of them opens a window, so they work the same over SSH or in CI.
-`plotplate preview` writes `preview.pdf`, `preview.png` and `preview.svg` next to the layout, and `--page a4` adds `preview-page.pdf/png`.
+Every command writes files and prints text; none of them opens a window, so they work the same over
+SSH or in CI.
+`plotplate preview` writes `preview.pdf`, `preview.png` and `preview.svg` next to the layout, and
+`--page a4` adds `preview-page.pdf/png`.
 Open them with your own viewer, or read the PNG with an agent.
 
 The preview has no margins on purpose: it is the figure file itself.
@@ -180,11 +199,14 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 
 - [docs/workflow.md](docs/workflow.md): the complete workflow, with every option.
 - [docs/layout-sources.md](docs/layout-sources.md): what a PDF, screenshot or drawing must contain.
-- [docs/panel-recipes.md](docs/panel-recipes.md): panel code recipes, dos and don'ts, complex compositions.
+- [docs/panel-recipes.md](docs/panel-recipes.md): panel code recipes, dos and don'ts, complex
+  compositions.
 - [docs/alignment.md](docs/alignment.md): guides, measured geometry, alignment rules.
-- Revising a figure later: [workflow.md](docs/workflow.md#changing-the-layout-later) and the `figure-layout-revision` skill.
+- Revising a figure later: [workflow.md](docs/workflow.md#changing-the-layout-later) and the
+  `figure-layout-revision` skill.
 - [docs/layout-spec.md](docs/layout-spec.md): the `layout.yaml` reference.
-- [docs/journal-specs.md](docs/journal-specs.md): figure requirements of Nature, Science, Cell, NAR, Genome Biology, Genome Research and PLOS, with sources.
+- [docs/journal-specs.md](docs/journal-specs.md): figure requirements of Nature, Science, Cell, NAR,
+  Genome Biology, Genome Research and PLOS, with sources.
 - [docs/related-tools.md](docs/related-tools.md): SciencePlots and Marsilea.
 - [docs/design-notes.md](docs/design-notes.md): decisions, limitations, open questions.
 

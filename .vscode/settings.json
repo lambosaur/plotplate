@@ -1,0 +1,15 @@
+{
+  // Tracked deliberately; see project-meta/docs/vscode.md.
+  // Every rule here has a non-VS-Code equivalent in docs/tooling.md.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.pixi/envs/dev/bin/python",
+  "ruff.path": ["${workspaceFolder}/.pixi/envs/dev/bin/ruff"],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.useEnvironmentsExtension": false,
+  "[markdown]": {
+    "editor.wordWrap": "off"
+  },
+  // redhat.vscode-yaml fetches schemas from schemastore.org on its own, on
+  // every YAML file open, by default. Off here; a subproject that wants
+  // schema-based YAML validation can turn it back on deliberately.
+  "yaml.schemaStore.enable": false
+}

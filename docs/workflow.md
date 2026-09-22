@@ -4,7 +4,8 @@
 
 ## Scope
 
-This file describes how to use the package in a research project: installation, folder structure, the daily loop, and the hand-off to Overleaf and journals.
+This file describes how to use the package in a research project: installation, folder structure, the
+daily loop, and the hand-off to Overleaf and journals.
 
 ## Figures folder structure
 
@@ -40,11 +41,14 @@ Two installations serve two purposes:
 | the library imported by panel notebooks, and `plotplate` | the project environment where notebooks run | `pixi add "python>=3.12"`, then `pixi add --pypi plotplate --git https://github.com/<org>/plotplate.git --branch main` |
 | the `plotplate` command alone | once per user, isolated | `pipx install "plotplate @ git+https://github.com/<org>/plotplate"` or `uv tool install …` |
 
-Only `plotplate build` (and `plotplate demo --build`) executes your notebooks; every other command needs plotplate alone.
-Run builds from the project environment (`pixi run plotplate build …`), where the notebooks' imports live.
+Only `plotplate build` (and `plotplate demo --build`) executes your notebooks; every other command
+needs plotplate alone.
+Run builds from the project environment (`pixi run plotplate build …`), where the notebooks' imports
+live.
 
 When two installations exist, they can drift apart.
-`plotplate doctor` prints both versions and paths, `plotplate build` refuses an interpreter that cannot import plotplate, and warns when its version differs from the command's.
+`plotplate doctor` prints both versions and paths, `plotplate build` refuses an interpreter that
+cannot import plotplate, and warns when its version differs from the command's.
 `--python /path/to/python` runs the notebooks with a chosen interpreter.
 
 For a pinned version in a Pixi project:
@@ -55,7 +59,8 @@ plotplate = { git = "https://github.com/<org>/plotplate.git", rev = "<tag>" }
 ```
 
 Install the agent skills into the repository with `plotplate skills --dest .claude/skills`.
-After installing fonts on the machine, rebuild matplotlib's font cache once: `plotplate fonts --rebuild`.
+After installing fonts on the machine, rebuild matplotlib's font cache once:
+`plotplate fonts --rebuild`.
 
 ## 1. Create the layout
 
@@ -71,7 +76,8 @@ This gives exact boxes when panels were placed as files (LaTeX `\includegraphics
 plotplate from-pdf manuscript.pdf --page 3 -o layout.yaml --journal nature --width double --fill-gap 4 --wireframe check.png
 ```
 
-Panel letters that are live text name the panels; the output reports at which scale each panel was printed.
+Panel letters that are live text name the panels; the output reports at which scale each panel was
+printed.
 
 **From a screenshot.**
 Crop it to the figure area, then:
@@ -83,10 +89,10 @@ plotplate tidy layout.yaml --fill-gap 4
 plotplate wireframe layout.yaml --background shot.png
 ```
 
-The `figure-layout-from-existing` skill guides an agent through these steps, and [layout-sources.md](layout-sources.md) explains what each source must contain.
+The `figure-layout-from-existing` skill guides an agent through these steps, and
+[layout-sources.md](layout-sources.md) explains what each source must contain.
 
-**In Inkscape.**
-`plotplate svg-export layout.yaml` writes `layout.svg`.
+**In Inkscape.** `plotplate svg-export layout.yaml` writes `layout.svg`.
 Move or draw rectangles in the layers `panels` (label: panel name) and `axes` (label: `A/roc`).
 Illustrator drawings work the same way when exported as SVG with layer names as object IDs.
 `plotplate svg-import layout.svg -o layout.yaml` copies the rectangles back and keeps everything else.
@@ -111,8 +117,10 @@ panel.context()  # whole figure, this panel outlined
 ```
 
 For seaborn figure-level plots, pass `figsize=panel.figsize`, then call `panel.fit(fig)`.
-For `sns.clustermap`, `place_clustermap(grid, panel, "heatmap", cbar="cbar")` also pins the heatmap to a layout rectangle.
-For Marsilea boards, `fit_marsilea(build, panel, main="heatmap")` does the same (see [related-tools.md](related-tools.md#marsilea)).
+For `sns.clustermap`, `place_clustermap(grid, panel, "heatmap", cbar="cbar")` also pins the heatmap to
+a layout rectangle.
+For Marsilea boards, `fit_marsilea(build, panel, main="heatmap")` does the same (see
+[related-tools.md](related-tools.md#marsilea)).
 
 `save` checks the figure before writing.
 Text is measured at the export resolution, as it will print:
@@ -131,19 +139,25 @@ Text is measured at the export resolution, as it will print:
 | `font-missing` | warning | the first font family is not installed |
 
 The notebook shows figures untrimmed, so what you see is the exact box.
-The `figure-panel-fitting` skill lists fixes for each issue code; [panel-recipes.md](panel-recipes.md) has code for common situations.
+The `figure-panel-fitting` skill lists fixes for each issue code; [panel-recipes.md](panel-recipes.md)
+has code for common situations.
 
 ### Do panels depend on each other?
 
 No. A guide is a number in the layout, not a measurement of another panel.
 
-- Panels can be written in any order, and each one alone: panel B's heatmap can sit on `row1_bottom` before panel A exists.
+- Panels can be written in any order, and each one alone: panel B's heatmap can sit on `row1_bottom`
+  before panel A exists.
 - You never read a coordinate off another panel, and never edit a panel because a neighbour changed.
-- When a guide moves, every panel that references it follows: `plotplate build` reruns all panel notebooks, and `plotplate check` lists panels saved before the last layout change (`panel-older-than-layout`).
-- Iteration therefore happens on the layout, not between notebooks: if panel A needs more room for its y labels, move the guide once and rebuild.
+- When a guide moves, every panel that references it follows: `plotplate build` reruns all panel
+  notebooks, and `plotplate check` lists panels saved before the last layout change
+  (`panel-older-than-layout`).
+- Iteration therefore happens on the layout, not between notebooks: if panel A needs more room for its
+  y labels, move the guide once and rebuild.
 
 Deciding *which* edges should align stays a design choice.
-`plotplate from-pdf --axes --guides` proposes the guides of an existing figure, and the `figure-layout-refine` skill proposes them for a new one; you approve and rename them.
+`plotplate from-pdf --axes --guides` proposes the guides of an existing figure, and the
+`figure-layout-refine` skill proposes them for a new one; you approve and rename them.
 
 ## 3. Build and check the figure
 
@@ -159,7 +173,8 @@ plotplate check layout.yaml        # without running anything
 Only the panel-letter font can differ, because LaTeX draws the letters with the document font.
 
 The preview is the figure file itself, without page margins.
-`plotplate preview layout.yaml --page a4` also writes `preview-page.pdf/png`: the figure centred on a page with a caption and placeholder text.
+`plotplate preview layout.yaml --page a4` also writes `preview-page.pdf/png`: the figure centred on a
+page with a caption and placeholder text.
 
 ### Does it line up?
 
@@ -169,7 +184,8 @@ plotplate align layout.yaml --near 1   # without rules: lists what is nearly ali
 plotplate preview layout.yaml --rules  # draws the rule lines across the page
 ```
 
-Each saved panel records where its axes and marks landed on the page, so agreement between panels is computed, not estimated.
+Each saved panel records where its axes and marks landed on the page, so agreement between panels is
+computed, not estimated.
 See [alignment.md](alignment.md).
 
 ## 4. Hand off to Overleaf
@@ -208,7 +224,8 @@ plotplate export layout.yaml -o build/Fig1.tif        # LZW-compressed RGB TIFF 
 ```
 
 The file has the same placement as the LaTeX output, with panel letters in the figure font.
-`plotplate export` refuses missing or wrongly sized panels, and warns when the journal does not accept the format.
+`plotplate export` refuses missing or wrongly sized panels, and warns when the journal does not accept
+the format.
 
 ## Changing the layout later
 
@@ -223,7 +240,8 @@ cp layout.yaml new.yaml        # edit new.yaml, or build it with plotplate from-
 plotplate diff layout.yaml new.yaml -o revision.yaml --wireframe revision.png
 ```
 
-`plotplate diff` matches panels by key, or by box overlap when keys differ, and reports each change with the notebooks it affects:
+`plotplate diff` matches panels by key, or by box overlap when keys differ, and reports each change
+with the notebooks it affects:
 
 ```text
   merged      A+B -> curves: 2 panels become curves
@@ -232,8 +250,11 @@ plotplate diff layout.yaml new.yaml -o revision.yaml --wireframe revision.png
   removed     E -> -: panel is gone
 ```
 
-Review `revision.png` (before and after side by side), then apply the plan: replace the layout, move the drawing functions between notebooks, and run `plotplate build`.
+Review `revision.png` (before and after side by side), then apply the plan: replace the layout, move
+the drawing functions between notebooks, and run `plotplate build`.
 `--mapping map.yaml` (`mapping: {C: [scatter_left, scatter_right]}`) overrides the automatic matching.
 
-With `labels: auto`, panel keys are stable ids and letters follow the reading order, so inserting a panel does not rename notebooks or files.
-The `figure-layout-revision` skill drives this loop with an agent; `figure-layout-refine` covers turning a draft into a final layout (guides, axes rectangles, page size).
+With `labels: auto`, panel keys are stable ids and letters follow the reading order, so inserting a
+panel does not rename notebooks or files.
+The `figure-layout-revision` skill drives this loop with an agent; `figure-layout-refine` covers
+turning a draft into a final layout (guides, axes rectangles, page size).

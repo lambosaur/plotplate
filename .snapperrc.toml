@@ -1,0 +1,7 @@
+# snapper (semantic line breaks) config.
+# Matches [tool.ruff].line-length in pyproject.toml, so every tool in this project
+# shares one line-length budget.
+# https://snapper.turtletech.us/docs/reference/config/
+
+format = "markdown"
+max_width = 102

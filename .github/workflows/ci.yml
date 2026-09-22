@@ -19,6 +19,10 @@ jobs:
       - run: pixi run -e dev ruff check .
       - run: pixi run -e dev ruff format --check .
       - run: pixi run -e dev mypy .
+      # snapper's pre-commit hook assumes it is already on PATH (see
+      # project-meta/docs/tooling.md); a CI runner is stateless, so this
+      # install is unconditional here, unlike make check-snapper's local report-only check.
+      - run: pixi global install snapper-fmt
       - run: pixi run -e dev pre-commit run --all-files --hook-stage manual
 
   pytest:

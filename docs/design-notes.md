@@ -4,7 +4,8 @@
 
 ## Scope
 
-This file records why the package works the way it does, what it does not do yet, and the open questions.
+This file records why the package works the way it does, what it does not do yet, and the open
+questions.
 
 ## Problem
 
@@ -38,7 +39,8 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 
 - **figurefirst** (layouts drawn in Inkscape, axes created from SVG rectangles).
   The closest existing idea.
-  It targets a single matplotlib figure for the whole page, which conflicts with the one-panel-one-figure decision.
+  It targets a single matplotlib figure for the whole page, which conflicts with the
+  one-panel-one-figure decision.
   It is also not actively maintained.
 - **One matplotlib figure with subfigures for the whole page.**
   Seaborn figure-level functions (clustermap) cannot draw into a subfigure.
@@ -52,7 +54,8 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 
 ## Revisions
 
-Rearranging a figure touches the layout and the notebooks together, so the deterministic and the judgement parts are separated:
+Rearranging a figure touches the layout and the notebooks together, so the deterministic and the
+judgement parts are separated:
 
 | part | where |
 | --- | --- |
@@ -60,15 +63,21 @@ Rearranging a figure touches the layout and the notebooks together, so the deter
 | stable identity across re-lettering | panel keys, with `labels: auto` assigning letters by reading order |
 | deciding the new arrangement, moving drawing functions, keeping constraints | the `figure-layout-revision` and `figure-layout-refine` skills (agent, plan-first) |
 
-Alignment across panels stays explicit: named guides, which a refinement proposes and the user approves.
-There is no automatic "make it look aligned" step, because which edges should align is a design decision.
+Alignment across panels stays explicit: named guides, which a refinement proposes and the user
+approves.
+There is no automatic "make it look aligned" step, because which edges should align is a design
+decision.
 
 ## Identity and alignment
 
-- Three levels of name: the figure (layout file), the panel (key, with the letter as display) and the plotting area (axes name).
-  A panel is always one matplotlib figure, so a seaborn clustermap (several axes) is one panel with named areas inside it.
-- Alignment across panels only exists through page coordinates, because panels are separate figures: named guides are that mechanism.
-- `plotplate from-pdf --axes --guides` recovers both levels from an existing figure: plotting areas from the rectangles matplotlib paints, guides from edges shared by several panels.
+- Three levels of name: the figure (layout file), the panel (key, with the letter as display) and the
+  plotting area (axes name).
+  A panel is always one matplotlib figure, so a seaborn clustermap (several axes) is one panel with
+  named areas inside it.
+- Alignment across panels only exists through page coordinates, because panels are separate figures:
+  named guides are that mechanism.
+- `plotplate from-pdf --axes --guides` recovers both levels from an existing figure: plotting areas
+  from the rectangles matplotlib paints, guides from edges shared by several panels.
 
 ## Known limitations
 
@@ -81,37 +90,49 @@ There is no automatic "make it look aligned" step, because which edges should al
 - `--axes` only works for vector panels; raster panels (PNG) keep no shapes to read.
 - `plotplate build` runs panel scripts as plain Python, without a Jupyter kernel.
   Notebook-only display calls return `None` there.
-- The NAR preset is not verified from journal text (see [journal-specs.md](journal-specs.md#nucleic-acids-research)).
+- The NAR preset is not verified from journal text (see
+  [journal-specs.md](journal-specs.md#nucleic-acids-research)).
 - Genome Research gives no column widths, so its layouts need an explicit `page.width`.
 - `plotplate from-pdf` records clipped `\includegraphics` (trim, clip) at their unclipped size.
-- Illustrator and Inkscape PDF exports were not tested (no licence or package available here); [layout-sources.md](layout-sources.md) states the expected behaviour.
+- Illustrator and Inkscape PDF exports were not tested (no licence or package available here);
+  [layout-sources.md](layout-sources.md) states the expected behaviour.
 - No interactive editor: correct boxes in Inkscape through `svg-export`/`svg-import`.
-- `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the user) decides how drawing code moves.
-- Panel letters in the LaTeX output use the document font; set `\plotplatePanelLabel` to Arial (for example with `fontspec` under XeLaTeX) to match `plotplate export`.
+- `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the
+  user) decides how drawing code moves.
+- Panel letters in the LaTeX output use the document font; set `\plotplatePanelLabel` to Arial (for
+  example with `fontspec` under XeLaTeX) to match `plotplate export`.
 
 ## Integration with project-meta
 
 Planned order, as agreed:
 
-1. This package, proven on the synthetic demo (done), then on one real PARNET figure (start with `plotplate from-pdf` on the Overleaf PDF).
-1. A Copier question in project-meta, for example `has_figures`, which generates `figures/style.yaml`, a `figures/_template/` folder (layout, one panel notebook, README), the pixi dependency, the skills, and a `build-figures` task.
+1. This package, proven on the synthetic demo (done), then on one real PARNET figure (start with
+   `plotplate from-pdf` on the Overleaf PDF).
+1. A Copier question in project-meta, for example
+   `has_figures`, which generates `figures/style.yaml`, a `figures/_template/` folder (layout, one
+   panel notebook, README), the pixi dependency, the skills, and a `build-figures` task.
 1. The same template applied to `parnet--paper`.
 
 Nothing in project-meta or PARNET has been changed so far.
 
 ## Open questions
 
-- The name: `plotplate` / `plotplate` was a placeholder. Free on PyPI: figplate, panelfit, plotplate, figlay, figboard, platefig, figfit, mmfig.
+- The name: `plotplate` / `plotplate` was a placeholder.
+  Free on PyPI: figplate, panelfit, plotplate, figlay, figboard, platefig, figfit, mmfig.
 
-- Should `plotplate` apply a revision plan mechanically (rename keys, rename `panels/*` files, scaffold new notebooks), leaving only content moves to the agent?
+- Should `plotplate` apply a revision plan mechanically (rename keys, rename `panels/*` files,
+  scaffold new notebooks), leaving only content moves to the agent?
 
-- Where should the package be hosted (GitHub organization, name) so that figures repositories can pin a tag?
+- Where should the package be hosted (GitHub organization, name) so that figures repositories can pin
+  a tag?
 
-- Should panel notebooks also be paired `.ipynb` files, as in the project-meta notebook convention, or stay `.py` only?
+- Should panel notebooks also be paired `.ipynb` files, as in the project-meta notebook convention, or
+  stay `.py` only?
 
 - Which real PARNET figure should be the pilot, and where is its screenshot?
 
-- NAR: can you get the figure section of the NAR author instructions (logged-in browser), so the preset can be verified?
+- NAR: can you get the figure section of the NAR author instructions (logged-in browser), so the
+  preset can be verified?
 
 - Should `text-near-edge` (text within 0.5 mm of the panel edge) become a warning?
   It would catch labels that touch the neighbouring panel's gap.

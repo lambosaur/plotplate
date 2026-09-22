@@ -25,6 +25,17 @@ dist/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+# This file also acts as project-meta's own .gitignore for everything under
+# template/ (git applies a nested .gitignore to its own subtree, regardless
+# of that subtree's role as Copier template source). Without these two
+# lines, project-meta's own git silently refuses to track this directory's
+# *.jinja source files, since the exceptions above only match the rendered,
+# suffix-stripped names. Verified directly: settings.json.jinja was never
+# tracked at all until this line was added, invisible to every commit and
+# every generation this whole time. No effect on generated output; no
+# .jinja-suffixed file exists there after rendering.
+!.vscode/settings.json.jinja
+!.vscode/extensions.json.jinja
 .idea/
 
 # Jupyter / Jupytext

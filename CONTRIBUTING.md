@@ -11,9 +11,12 @@ cd plotplate
 make setup
 ```
 
-`make setup` checks for `pixi`, runs `pixi install -e dev`, and offers (does not force) to install pre-commit hooks.
-Re-running it is always safe.
-The `dev` environment installs the package in editable mode, so `pixi run -e dev plotplate …` uses your working copy.
+This reports any missing required tool (`pixi`, `copier`, `snapper`) with its exact install command,
+and stops.
+Otherwise it runs `pixi install -e dev`, then offers (does not force) to install pre-commit hooks.
+Re-running `make setup` is always safe; it only fills in whatever is missing.
+The `dev` environment installs the package in editable mode, so `pixi run -e dev plotplate …` uses
+your working copy.
 
 If you use `direnv`:
 
@@ -35,20 +38,30 @@ pixi run -e dev hard-case      # awkward-layout PDF and its import, in examples/
 pixi run -e dev docs-figures   # regenerate docs/images/ from a fresh demo build
 ```
 
-After any change to drawing, checks, preview, LaTeX or export, run the demo and look at `examples/demo/fig1/preview.png`.
+These call `pixi run -e dev ...` directly, no container runtime needed.
+This is where most iteration should happen.
+See project-meta-seed/docs/tooling.md for the full local CI story (`actionlint`, `act`).
+
+After any change to drawing, checks, preview, LaTeX or export, run the demo and look at
+`examples/demo/fig1/preview.png`.
 Regenerate `docs/images/` when the pictures in the README change.
 
 ## Branches
 
-- `main`: released state. Users install from it (or from tags on it).
-- `dev`: integration branch. Feature branches merge here first.
+- `main`: released state.
+  Users install from it (or from tags on it).
+- `dev`: integration branch.
+  Feature branches merge here first.
 - `feature/<topic>`: one change each, branched from `dev`, merged back with a pull request.
 
 Merge `dev` into `main` when it is ready to release, then tag (`vX.Y.Z`).
 
-All files are tracked on every branch, including development configuration (`pixi.toml`, lint configs, `.github/`, `CLAUDE.md`).
-Keeping different files on different branches is not possible with git in a maintainable way: every merge would carry them over.
-It is also not needed: an installation (`pipx`, `uv`, `pip`) only contains the package in `src/plotplate/`, never these files.
+All files are tracked on every branch, including development configuration (`pixi.toml`, lint configs,
+`.github/`, `CLAUDE.md`).
+Keeping different files on different branches is not possible with git in a maintainable way: every
+merge would carry them over.
+It is also not needed: an installation (`pipx`, `uv`, `pip`) only contains the package in
+`src/plotplate/`, never these files.
 
 ## Repository layout
 
@@ -72,8 +85,11 @@ Personal files stay out of git: `.envrc`, `.claude/settings.local.json`, `.claud
 
 ## Template origin
 
-The repository skeleton was generated from the project-meta Copier template (library tier).
-`.copier-answers.yml` records the template version, so `copier update` can bring later template changes.
+The repository skeleton was generated from the project-meta-seed Copier template (library tier).
+`.copier-answers.yml` records the template version, so `copier update` can bring later template
+changes.
+This is a one-off project, not part of a larger project with its own meta repo (see `AGENTS.md`);
+conventions live directly in this repo rather than a shared meta repo.
 
 ## Enforcement policy
 

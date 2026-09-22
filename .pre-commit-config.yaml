@@ -29,6 +29,21 @@ repos:
         # frontmatter and mangles it (verified directly while building this template).
         additional_dependencies: [mdformat-frontmatter]
 
+  # snapper: real enforcement for one-sentence-per-line, plus a max-width wrap.
+  # Config in .snapperrc.toml. See project-meta/docs/markdown-style-guide.md.
+  # `language: system` calls the machine's own `snapper` binary (pixi global
+  # install snapper-fmt; `make check-snapper` reports if it's missing) rather
+  # than letting pre-commit build its own copy from source, which pulls in a
+  # much heavier dependency set than this needs and takes minutes.
+  - repo: local
+    hooks:
+      - id: snapper
+        name: snapper
+        entry: snapper
+        language: system
+        args: [-i, -w, "102", -f, markdown]
+        files: \.md$
+
   - repo: https://github.com/crate-ci/typos
     rev: v1.24.6
     hooks:
