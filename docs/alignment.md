@@ -17,6 +17,7 @@ Two mechanisms cover it, and they work in opposite directions:
 
 | mechanism | direction | file | answers |
 | --- | --- | --- | --- |
+| **constraints** | input: they place panels | `layout.yaml` | "these two panels have equal widths, 4 mm apart" ([constraints.md](constraints.md)) |
 | **guides** | input: they place things | `layout.yaml` | "put the bottom spine of these axes at y = 45 mm" |
 | **alignment rules** | output: they measure what happened | `alignment.yaml` + `panels/<panel>.json` | "do these features actually coincide, and by how much do they differ?" |
 
@@ -61,6 +62,10 @@ several panels already share.
 
 - Every visible axes is included, also the ones a library created (a clustermap's `heatmap`,
   `row_dendrogram`, `cbar`).
+- Names come from the layout (`roc`, `heatmap`), from `ax.set_label("name")` for axes made in code,
+  and otherwise `ax1`, `ax2`… in reading order, which does not change between runs.
+- `plotplate features layout.yaml` prints them all, so a reference for `alignment.yaml` can be copied
+  rather than guessed.
 - `spines` says which edges are actually drawn, so a check can report "this edge has no spine; the
   axes edge was used".
 - Coordinates are page millimetres, comparable across panels.
@@ -89,6 +94,7 @@ rules:
 ```
 
 ```sh
+plotplate features layout.yaml               # every feature you can refer to, with its coordinates
 plotplate align layout.yaml                  # uses alignment.yaml if present
 plotplate align layout.yaml --near 1.0       # without rules: what is nearly aligned
 plotplate preview layout.yaml --rules        # draws the rule lines across the page

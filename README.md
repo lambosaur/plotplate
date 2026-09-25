@@ -205,6 +205,8 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 - Revising a figure later: [workflow.md](docs/workflow.md#changing-the-layout-later) and the
   `figure-layout-revision` skill.
 - [docs/layout-spec.md](docs/layout-spec.md): the `layout.yaml` reference.
+- [docs/constraints.md](docs/constraints.md): panel boxes solved from relations instead of typed
+  numbers.
 - [docs/journal-specs.md](docs/journal-specs.md): figure requirements of Nature, Science, Cell, NAR,
   Genome Biology, Genome Research and PLOS, with sources.
 - [docs/related-tools.md](docs/related-tools.md): SciencePlots and Marsilea.
@@ -218,7 +220,7 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 | `plotplate from-pdf` / `plotplate detect` / `plotplate svg-import` / `plotplate new` | create a layout |
 | `plotplate merge` / `plotplate tidy` / `plotplate svg-export` / `plotplate resolve` / `plotplate relabel` | adjust a layout |
 | `plotplate diff` | compare two layouts: moved, merged, split, added, removed, with a revision plan |
-| `plotplate validate` / `plotplate wireframe` / `plotplate align` | inspect a layout, check that panels line up |
+| `plotplate validate` / `plotplate wireframe` / `plotplate align` / `plotplate features` | inspect a layout, check alignment, list measurable features |
 | `plotplate build` | run panel notebooks, then preview, LaTeX and checks |
 | `plotplate preview` / `plotplate latex` / `plotplate check` | individual build steps |
 | `plotplate bundle` / `plotplate export` | deliver to Overleaf or to a journal |

@@ -65,10 +65,11 @@ panels:
 | `style_files` | no | style YAML files merged in order, relative to the layout file |
 | `style` | no | inline style overrides |
 | `page.width` | yes | mm, or a width name of the journal preset (`single`, `double`…) |
-| `page.height` | yes | mm |
+| `page.height` | yes | mm, or `solve` to compute it from the constraints |
 | `labels` | no (default `id`) | `id`: the panel key is its letter. `auto`: keys are stable ids and letters are assigned in reading order |
 | `guides.x`, `guides.y` | no | named vertical and horizontal lines |
 | `mosaic` | no | grid shorthand for panel boxes |
+| `constraints` | no | relations between panels, from which boxes are solved ([constraints.md](constraints.md)) |
 | `panels` | yes | panel entries, in reading order |
 
 ## Identity: page, panels, axes

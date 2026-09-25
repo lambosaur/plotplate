@@ -79,6 +79,14 @@ decision.
 - `plotplate from-pdf --axes --guides` recovers both levels from an existing figure: plotting areas
   from the rectangles matplotlib paints, guides from edges shared by several panels.
 
+## Constraints and compound-figure separation (2026-09-25)
+
+| decision | reason |
+| --- | --- |
+| Panel boxes can be solved from constraints (`kiwisolver`, Cassowary). | Relations survive edits that numbers do not: a journal switch keeps the gaps fixed and re-solves the widths, and near-misses cannot appear. kiwisolver ships with matplotlib, so it costs no dependency. |
+| CVXPY was not adopted. | It buys objectives ("maximise panel area subject to..."), which no current feature needs, at the price of heavy solvers. Revisit only if layout becomes an optimisation rather than a set of relations. |
+| Machine-learning compound-figure separation (SimCFS, EXSCLAIM!, SODA) was not adopted. | Those models split *published raster figures* for literature mining. Our inputs are the sources: PDFs carry exact placements, and gutter detection scores 0.96-0.98 IoU on realistic arrangements. Bundling torch and hunting for weights (SODA ships none) would buy accuracy only on figures that are raster-only *and* have touching panels. A `--detector` hook can accept boxes from such a model if that case ever matters. |
+
 ## Known limitations
 
 - Guides do not round-trip through SVG.

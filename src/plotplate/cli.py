@@ -147,6 +147,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     layout = Layout.load(args.layout)
     data = dict(layout.raw)
     data.pop("mosaic", None)
+    data.pop("constraints", None)  # the solved boxes replace the rules
+    data["page"] = {**(data.get("page") or {}), "height": layout.height}
     panels = {}
     for name, spec in layout.panels.items():
         entry = dict((layout.raw.get("panels") or {}).get(name) or {})
@@ -554,6 +556,30 @@ def cmd_align(args: argparse.Namespace) -> int:
     return status
 
 
+def cmd_features(args: argparse.Namespace) -> int:
+    """List every measurable feature of the saved panels, ready to paste into alignment.yaml."""
+    from .align import read_features
+
+    layout = Layout.load(args.layout)
+    features, issues = read_features(layout)
+    if not features:
+        print("no geometry yet: draw the panels first (`plotplate build`)")
+        return _print_issues(issues)
+    width = max(len(ref) for ref in features)
+    print(f"{'feature':{width}}  kind   coordinates (mm)")
+    for ref, feature in sorted(features.items()):
+        if feature.kind == "mark":
+            detail = f"x {feature.values['x']:.2f}  y {feature.values['y']:.2f}"
+        else:
+            edges = "  ".join(
+                f"{e} {feature.values[e]:.2f}" for e in ("left", "right", "top", "bottom")
+            )
+            drawn = ",".join(feature.spines) or "no spines"
+            detail = f"{edges}   [{drawn}]"
+        print(f"{ref:{width}}  {feature.kind:5}  {detail}")
+    return _print_issues(issues)
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     from .render import panel_status
 
@@ -726,7 +752,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("validate", cmd_validate, "Check layout geometry.")
     p.add_argument("layout")
 
-    p = add("resolve", cmd_resolve, "Make every box explicit (resolve mosaic, guides, margins).")
+    p = add("resolve", cmd_resolve, "Make every box explicit (resolve constraints, mosaic, guides).")
     p.add_argument("layout")
     p.add_argument("-o", "--output")
 
@@ -823,6 +849,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output")
     p.add_argument("--prefix", default="panels/", help="graphics path prefix in LaTeX")
     p.add_argument("--no-labels", action="store_true")
+
+    p = add("features", cmd_features, "List the measurable features of the saved panels.")
+    p.add_argument("layout")
 
     p = add("align", cmd_align, "Check that panel features line up, using measured page coordinates.")
     p.add_argument("layout")

@@ -137,8 +137,17 @@ class Layout:
         page = data.get("page") or {}
         self.width = self._resolve_width(page.get("width"))
         if page.get("height") is None:
-            raise ValueError("page.height is required (mm)")
-        self.height = float(page["height"])
+            raise ValueError("page.height is required (mm, or 'solve' with constraints)")
+        raw_height = page["height"]
+        solve_height = isinstance(raw_height, str) and raw_height.lower() in {"solve", "auto"}
+        height = None if solve_height else float(raw_height)
+        self.constraint_boxes: dict[str, Rect] = {}
+        if data.get("constraints"):
+            self.constraint_boxes, solved = self._solve_constraints(data, height)
+            height = solved if solve_height else height
+        elif solve_height:
+            raise ValueError("page.height: 'solve' needs a constraints section")
+        self.height = float(height)  # type: ignore[arg-type]
         self.page = Rect(0.0, 0.0, self.width, self.height)
 
         guides = data.get("guides") or {}
@@ -207,6 +216,24 @@ class Layout:
             raise ValueError(f"page.width {width!r} is not a number nor a journal width {widths}")
         return float(widths[width])
 
+    def _solve_constraints(
+        self, data: dict[str, Any], height: float | None
+    ) -> tuple[dict[str, Rect], float]:
+        """Boxes computed from the ``constraints`` section, and the page height."""
+        from .solve import solve_boxes
+
+        raw_panels = data.get("panels") or {}
+        if not raw_panels:
+            raise ValueError(
+                "constraints need panels; declare them in `panels:` (an empty entry is fine)"
+            )
+        pinned = {
+            name: Rect.from_list(spec["box"])
+            for name, spec in raw_panels.items()
+            if (spec or {}).get("box") is not None
+        }
+        return solve_boxes(list(raw_panels), data["constraints"], self.width, height, pinned)
+
     def _mosaic_boxes(self, mosaic: dict[str, Any]) -> dict[str, Rect]:
         rows = [list(r) if isinstance(r, str) else [str(c) for c in r] for r in mosaic["rows"]]
         ncols = len(rows[0])
@@ -248,10 +275,12 @@ class Layout:
             raw = raw or {}
             if raw.get("box") is not None:
                 box = Rect.from_list(raw["box"])
+            elif name in self.constraint_boxes:
+                box = self.constraint_boxes[name]
             elif name in mosaic:
                 box = mosaic[name]
             else:
-                raise ValueError(f"Panel {name!r} has no box and is not in the mosaic")
+                raise ValueError(f"Panel {name!r} has no box, constraints or mosaic cell")
 
             label_raw = raw.get("label", {})
             if label_raw is False:
@@ -363,8 +392,8 @@ class Layout:
 
     # ------------------------------------------------------------------ validation
 
-    def validate(self) -> list[Issue]:
-        """Geometry sanity checks that need no panel files."""
+    def _journal_issues(self) -> list[Issue]:
+        """Page size against the journal's column widths and maximum height."""
         issues: list[Issue] = []
         page_cfg = (self.journal or {}).get("page") or {}
         max_height = page_cfg.get("max_height")
@@ -385,7 +414,29 @@ class Layout:
                     f"page width {self.width} mm is not a journal column width {widths}",
                 )
             )
+        return issues
 
+    def _constraint_issues(self) -> list[Issue]:
+        """Panels the constraint rules do not pin down."""
+        if not self.constraint_boxes:
+            return []
+        from .solve import unconstrained
+
+        loose = unconstrained(self.constraint_boxes, self.width, self.height)
+        if not loose:
+            return []
+        return [
+            Issue(
+                "warning",
+                "under-constrained",
+                f"the constraints leave {loose} free: they take the minimum size or the whole "
+                "page; add a size, an equal or a pin rule",
+            )
+        ]
+
+    def validate(self) -> list[Issue]:
+        """Geometry sanity checks that need no panel files."""
+        issues = self._journal_issues() + self._constraint_issues()
         names = list(self.panels)
         for i, name in enumerate(names):
             spec = self.panels[name]

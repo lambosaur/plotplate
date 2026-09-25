@@ -263,10 +263,19 @@ class Panel:
     def geometry(self, fig: Figure) -> dict[str, Any]:
         """Measured page coordinates of the panel's plotting areas and marks."""
         axes_entries: dict[str, Any] = {}
-        for index, ax in enumerate(fig.axes):
-            if not ax.get_visible():
-                continue
-            name = self._names.get(id(ax)) or ax.get_label() or f"ax{index + 1}"
+        # Reading order, so the fallback names (ax1, ax2, …) do not depend on the order the
+        # code happened to create the axes in, and stay the same across runs.
+        visible = [ax for ax in fig.axes if ax.get_visible()]
+        ordered = sorted(
+            visible,
+            key=lambda a: (round((1 - a.get_position().y1) * self.box.h / 5), a.get_position().x0),
+        )
+        unnamed = 0
+        for ax in ordered:
+            name = self._names.get(id(ax)) or ax.get_label()
+            if not name:
+                unnamed += 1
+                name = f"ax{unnamed}"
             x0, y0, x1, y1 = ax.get_position().extents
             edges = {
                 "left": self.box.x + x0 * self.box.w,
