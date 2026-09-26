@@ -284,61 +284,131 @@ def cmd_from_pdf(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_optimize(args: argparse.Namespace) -> int:
-    """Re-spend the white space between panels, within a distortion limit."""
-    from .pack import PackError, Target, optimize
+def _optimize_target(args: argparse.Namespace, layout: Layout) -> Any:
+    """The optimizer settings: the layout's ``optimize:`` section, then the flags given.
 
-    layout = Layout.load(args.layout)
+    Settings a figure keeps (a panel that must not be resized, a photograph's aspect ratio)
+    belong in the layout, where they are versioned and where an agent can edit them; the flags
+    are for trying something out.
+    """
+    from .pack import Target
+
+    section = dict(layout.raw.get("optimize") or {})
+    per_panel = dict(section.pop("panels", None) or {})
+    stretch: float | None = None
+    raw_stretch = args.max_stretch if args.max_stretch is not None else section.get("max_stretch")
+    if raw_stretch is not None and str(raw_stretch).lower() != "auto":
+        stretch = float(raw_stretch)
     width = None
     if args.width is not None:
         value = _number_or_name(args.width)
         width = float(value) if not isinstance(value, str) else _journal_width(layout, value)
         if width is None:
-            return 1
-    height: float | None = None
-    if args.height not in (None, "scale"):
-        height = layout.height if args.height == "keep" else float(args.height)
-    target = Target(
-        gap=args.gap,
-        stretch=args.max_stretch,
-        shrink=args.max_shrink if args.max_shrink is not None else args.max_stretch,
+            raise SystemExit(1)
+    height_arg = args.height if args.height is not None else section.get("height", "scale")
+    height = None
+    if str(height_arg) not in ("scale", "None"):
+        height = layout.height if height_arg == "keep" else float(height_arg)
+    frozen = {name for name, entry in per_panel.items() if (entry or {}).get("freeze")}
+    aspect = {name for name, entry in per_panel.items() if (entry or {}).get("keep_aspect")}
+    return Target(
+        gap=args.gap if args.gap is not None else float(section.get("gap", 4.0)),
+        stretch=stretch,
+        shrink=float(
+            args.max_shrink if args.max_shrink is not None else section.get("max_shrink", 1.2)
+        ),
         width=width,
         height=height,
-        freeze=tuple(args.freeze or ()),
-        keep_aspect=tuple(args.keep_aspect or ()),
+        freeze=tuple(sorted(frozen | set(args.freeze or ()))),
+        keep_aspect=tuple(sorted(aspect | set(args.keep_aspect or ()))),
+        limits={
+            name: float(entry["stretch"])
+            for name, entry in per_panel.items()
+            if (entry or {}).get("stretch") is not None
+        },
     )
+
+
+def _optimize_report(report: Any, target: Any, source: str) -> None:
+    """Print what the optimization did, for a person reading a terminal."""
+    overlaps = f", {report.overlaps} overlapping pairs" if report.overlaps else ""
+    before, after = report.gutters
+    gutters = (
+        f"{after[0]:.1f} mm everywhere"
+        if abs(after[1] - after[0]) < 0.05
+        else f"{after[0]:.1f}-{after[1]:.1f} mm"
+    )
+    chosen = " (chosen for you; --max-stretch sets it)" if report.automatic else ""
+    print(f"{source}: {len(report.before)} panels{overlaps}")
+    print(f"  gutters   {before[0]:.1f}-{before[1]:.1f} mm  ->  {gutters}")
+    print(
+        f"  panels    {report.occupancy[0]:.0%} of the figure  ->  {report.occupancy[1]:.0%}"
+        f"  ({report.width:g} x {report.height:g} mm)"
+    )
+    print(f"  stretched up to {report.stretch:.2f}x{chosen}")
+    print(f"  {'panel':6s} {'before (x, y, w, h)':28s} {'after':28s} factor")
+    for name in report.after:
+        fx, fy = report.factors(name)
+        note = "  frozen" if name in target.freeze else ""
+        print(
+            f"  {name:6s} {report.before[name].to_list(1)!s:28s} "
+            f"{report.after[name].to_list(1)!s:28s} {fx:.2f} x {fy:.2f}{note}"
+        )
+    for note in report.notes:
+        print(f"  note: {note}")
+
+
+def cmd_optimize(args: argparse.Namespace) -> int:
+    """Re-spend the white space between panels, within a distortion limit."""
+    from .pack import PackError, optimize
+
+    layout = Layout.load(args.layout)
+    target = _optimize_target(args, layout)
     try:
         data, report = optimize(layout, target, tolerance=args.tolerance)
     except PackError as exc:
         print(f"cannot optimize {_rel(layout.file)}: {exc}", file=sys.stderr)
         return 1
-
-    overlaps = f", {report.overlaps} overlapping pairs" if report.overlaps else ""
-    print(
-        f"{_rel(layout.file)}: {len(report.before)} panels, "
-        f"{layout.width:g} x {layout.height:g} mm{overlaps}"
-    )
-    before, after = report.gutters
-    print(
-        f"  gutters {before[0]:.1f}-{before[1]:.1f} mm -> {after[0]:.1f}-{after[1]:.1f} mm; "
-        f"panels cover {report.occupancy[0]:.0%} -> {report.occupancy[1]:.0%} of "
-        f"{report.width:g} x {report.height:g} mm"
-    )
-    for name in report.after:
-        fx, fy = report.factors(name)
-        frozen = "  frozen" if name in target.freeze else ""
-        print(
-            f"  {name:6s} {report.before[name].to_list(1)!s:26s} -> "
-            f"{report.after[name].to_list(1)!s:26s} {fx:.2f}x {fy:.2f}x{frozen}"
-        )
-    for note in report.notes:
-        print(f"  note: {note}")
-    if args.dry_run:
-        print("--dry-run: nothing written")
-        return 0
     out = Path(args.output) if args.output else variant_path(layout.file, "optimized")
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "source": _rel(layout.file),
+                    "output": None if args.dry_run else _rel(out),
+                    "width": report.width,
+                    "height": report.height,
+                    "stretch": report.stretch,
+                    "stretch_chosen_automatically": report.automatic,
+                    "gap": target.gap,
+                    "occupancy": {"before": report.occupancy[0], "after": report.occupancy[1]},
+                    "gutters": {"before": report.gutters[0], "after": report.gutters[1]},
+                    "guides": {"before": report.guides[0], "after": report.guides[1]},
+                    "overlaps_before": report.overlaps,
+                    "panels": {
+                        name: {
+                            "before": report.before[name].to_list(),
+                            "after": report.after[name].to_list(),
+                            "factor": list(report.factors(name)),
+                            "frozen": name in target.freeze,
+                        }
+                        for name in report.after
+                    },
+                    "notes": report.notes,
+                },
+                indent=2,
+            )
+        )
+    else:
+        _optimize_report(report, target, _rel(layout.file))
+    if args.dry_run:
+        if not args.json:
+            print("--dry-run: nothing written")
+        return 0
     dump_yaml(data, out)
-    print(f"wrote {_rel(out)}")
+    if not args.json:
+        print(f"wrote {_rel(out)}\nnext: plotplate view {_rel(out.parent)}")
     return _print_issues(Layout.load(out).validate())
 
 
@@ -461,8 +531,7 @@ def _build_figure_demo(dest: Path, python: str) -> int:
     print("\n[2/5] spend the white space of that draft: layout.optimized.yaml")
     optimized = main(
         [
-            "optimize", str(figure / "layout.detected.yaml"),
-            "--gap", "4", "--max-stretch", "1.5", "--height", "168",
+            "optimize", str(figure / "layout.detected.yaml"), "--gap", "4", "--height", "168",
         ]
     )  # fmt: skip
     status = max(status, optimized)
@@ -913,19 +982,20 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("optimize", cmd_optimize, "Grow the panels to use the white space between them.")
     p.add_argument("layout", help="layout file, or the figure folder holding layout.yaml")
     p.add_argument("-o", "--output", help="default: layout.optimized.yaml next to the input")
-    p.add_argument("--gap", type=float, default=4.0, help="mm; every gutter becomes this wide")
+    p.add_argument("--gap", type=float, help="mm; every gutter becomes this wide (default 4)")
     p.add_argument(
-        "--max-stretch", type=float, default=1.2, help="a panel may grow by this factor (1 = never)"
+        "--max-stretch",
+        help="how much a panel may grow: a factor, or 'auto' (the default) to use the smallest "
+        "factor that fills every row",
     )
-    p.add_argument(
-        "--max-shrink", type=float, help="a panel may shrink by this factor (default: same)"
-    )
+    p.add_argument("--max-shrink", type=float, help="how much a panel may shrink (default 1.2)")
     p.add_argument("--width", help="target width: mm, or a journal width name (single, double…)")
-    p.add_argument("--height", default="scale", help="'scale' (keep the proportions), 'keep', or mm")
+    p.add_argument("--height", help="'scale' (keep the proportions, default), 'keep', or mm")
     p.add_argument("--tolerance", type=float, default=1.0, help="mm; edges this close are shared")
     p.add_argument("--freeze", nargs="*", help="panels that keep their exact size")
     p.add_argument("--keep-aspect", nargs="*", help="panels that keep their width/height ratio")
     p.add_argument("--dry-run", action="store_true", help="report, write nothing")
+    p.add_argument("--json", action="store_true", help="report as JSON (for agents and scripts)")
 
     p = add("diff", cmd_diff, "Compare two layouts: what moved, merged, split, was added or removed.")
     p.add_argument("old")

@@ -10,7 +10,8 @@ Python, the preview, the Inkscape SVG and the generated LaTeX all read it.
 ## Levels
 
 `page` (the sheet) contains `area` (the figure), which contains `panels`, which contain `axes`.
-A panel is one matplotlib figure saved as one file; see [coordinates.md](coordinates.md).
+A panel is one matplotlib figure saved as one file.
+[coordinates.md](coordinates.md) draws all of it in one picture.
 
 `page:` is optional: without it plotplate knows only the figure, and `plotplate view --paper a4` will
 assume a sheet to show it on.

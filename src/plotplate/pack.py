@@ -13,9 +13,10 @@ not spent on the data.
    recorded as an inset and rides along with its host);
 2. every gutter of that grid is set to one gap, and the rest of the width (and height) is
    given back to the panels;
-3. no panel may change size by more than a factor you choose -- 1.2 by default, so a panel
-   can grow by 20 % but not become a different figure. Panels can also be frozen, or kept
-   at their aspect ratio.
+3. no panel may change size by more than a factor. By default the optimizer picks that factor
+   itself: the smallest one that lets every row fill the width, and never more than
+   :data:`STRETCH_CEILING`. Setting it (``--max-stretch``) is how you ask for less. Panels can
+   also be frozen, kept at their aspect ratio, or given their own limit in the layout.
 
 The solver is Cassowary (``kiwisolver``, a matplotlib dependency), the same one
 :mod:`plotplate.solve` uses. The objective is stated as constraints rather than as a cost:
@@ -32,7 +33,7 @@ their width in millimetres, and the extra space goes to the plotting areas.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import combinations
 from typing import Any
 
@@ -42,6 +43,9 @@ from .geometry import Rect
 from .layout import Layout, area_section
 
 MIN_STRIP_MM = 2.0
+#: The most an automatic stretch will ever allow: no panel doubles unless you ask for it.
+STRETCH_CEILING = 2.0
+STRETCH_STEP = 0.05
 AXES = ("x", "y")
 
 
@@ -130,7 +134,7 @@ def read_grid(boxes: dict[str, Rect], tolerance: float = 1.0) -> Grid:
 
     Raises:
         PackError: two panels overlap without one being nested in the other, so the boxes
-            do not describe a grid at all (a pinwheel, or panels that were mis-detected).
+            do not describe a grid at all (a pinwheel, or panels that were read back wrongly).
     """
     insets: dict[str, str] = {}
     for name, box in boxes.items():
@@ -198,7 +202,12 @@ def _facing(rect: Rect, others: list[Rect], axis: str) -> tuple[list[float], lis
 
 
 def fill_white_space(
-    boxes: dict[str, Rect], width: float, height: float, gap: float, stretch: float
+    boxes: dict[str, Rect],
+    width: float,
+    height: float,
+    gap: float,
+    stretch: float,
+    limits: dict[str, float] | None = None,
 ) -> dict[str, Rect]:
     """Grow every panel into the white space beside it, within the stretch limit.
 
@@ -211,6 +220,8 @@ def fill_white_space(
     edge, a short last row. The grid solve that follows can only re-spend space that is already
     inside a box, because it moves shared boundaries and never changes which cells a panel
     covers.
+
+    ``limits`` overrides ``stretch`` for the panels named in it.
     """
     filled = {}
     for name, rect in boxes.items():
@@ -222,7 +233,7 @@ def fill_white_space(
             start = (max(before) + low) / 2 + gap / 2 if before else 0.0
             end = (min(after) + high) / 2 - gap / 2 if after else limit
             grow = [max(0.0, low - start), max(0.0, end - high)]
-            allowed = (high - low) * (stretch - 1)
+            allowed = (high - low) * ((limits or {}).get(name, stretch) - 1)
             asked = sum(grow)
             if asked > allowed:
                 share = max(0.0, allowed) / asked if asked else 0.0
@@ -234,16 +245,27 @@ def fill_white_space(
 
 @dataclass(frozen=True)
 class Target:
-    """What the optimized layout must achieve."""
+    """What the optimized layout must achieve.
+
+    Everything here has a usable default, so ``optimize(layout, Target())`` is the whole
+    command in one call. ``stretch`` is the exception on purpose: ``None`` means *decide*,
+    and the optimizer then picks the smallest factor that fills the rows (never more than
+    :data:`STRETCH_CEILING`), which is what makes one run enough.
+    """
 
     gap: float = 4.0
-    stretch: float = 1.2  # a panel may become this many times bigger
+    stretch: float | None = None  # a panel may become this many times bigger; None: decide
     shrink: float = 1.2  # ... and this many times smaller
     width: float | None = None  # None: keep the current width
     height: float | None = None  # None: let it follow the width, to keep the proportions
     freeze: tuple[str, ...] = ()
     keep_aspect: tuple[str, ...] = ()
+    limits: dict[str, float] = field(default_factory=dict)  # per panel, from the layout file
     fill: bool = True  # first grow the panels into the white space beside them
+
+    def limit(self, panel: str) -> float:
+        """How much this panel may grow: its own limit, or the figure's."""
+        return self.limits.get(panel, self.stretch if self.stretch is not None else 1.0)
 
 
 @dataclass
@@ -258,6 +280,8 @@ class Report:
     gutters: tuple[tuple[float, float], tuple[float, float]]  # (min, max) gutter, before/after
     overlaps: int  # overlapping pairs in the input
     guides: tuple[int, int]  # named shared edges before/after
+    stretch: float = 1.0  # the distortion limit that was applied
+    automatic: bool = False  # ... and whether the optimizer chose it
     notes: list[str] = field(default_factory=list)
 
     def factors(self, name: str) -> tuple[float, float]:
@@ -279,13 +303,14 @@ def _infeasible(strips: list[tuple[float, bool]], total: float, target: Target) 
     content = sum(size for size, gutter in strips if not gutter)
     gutters = sum(1 for _, gutter in strips if gutter)
     room = total - target.gap * gutters
+    stretch = target.stretch if target.stretch is not None else STRETCH_CEILING
     if room <= 0:
         return f"{gutters} gutters of {target.gap:g} mm leave no room in {total:g} mm"
     factor = room / content
-    if factor > target.stretch + 1e-6:
+    if factor > stretch + 1e-6:
         return (
             f"the panels would have to grow {factor:.2f}x to fill {total:g} mm "
-            f"(limit {target.stretch:.2f}x): raise --max-stretch, or lower --gap"
+            f"(limit {stretch:.2f}x): raise --max-stretch, or lower --gap"
         )
     if factor < 1 / target.shrink - 1e-6:
         return (
@@ -293,6 +318,14 @@ def _infeasible(strips: list[tuple[float, bool]], total: float, target: Target) 
             f"(limit {1 / target.shrink:.2f}x): raise --max-shrink"
         )
     return None
+
+
+def _require(solver: Solver, constraint: Any) -> None:
+    """Add a constraint that must hold; a conflict becomes a PackError, not a solver error."""
+    try:
+        solver.addConstraint(constraint | "required")
+    except UnsatisfiableConstraint as exc:
+        raise PackError(f"these limits cannot all hold at once ({exc})") from exc
 
 
 def _strip_variables(
@@ -307,9 +340,9 @@ def _strip_variables(
         strips[axis] = variables
         for variable, (size, gutter) in zip(variables, bands, strict=True):
             if gutter:
-                solver.addConstraint((variable == target.gap) | "required")
+                _require(solver, variable == target.gap)
             else:
-                solver.addConstraint((variable >= MIN_STRIP_MM) | "required")
+                _require(solver, variable >= MIN_STRIP_MM)
                 # One scale per axis: the recovered space is shared out in proportion to
                 # what each strip already had, instead of landing on one panel.
                 solver.addConstraint((variable == size * scale[axis]) | "medium")
@@ -317,7 +350,7 @@ def _strip_variables(
         solver.addConstraint((scale[axis] == 1.0) | "weak")
         total = totals[axis]
         if total is not None:
-            solver.addConstraint((_expression(variables) == total) | "required")
+            _require(solver, _expression(variables) == total)
     return strips
 
 
@@ -341,12 +374,12 @@ def _panel_limits(
             size = _expression(strips[axis][low:high])
             sizes[axis] = size
             if name in target.freeze:
-                solver.addConstraint((size == extent) | "required")
+                _require(solver, size == extent)
             else:
-                solver.addConstraint((size <= extent * target.stretch) | "required")
-                solver.addConstraint((size >= extent / target.shrink) | "required")
+                _require(solver, size <= extent * target.limit(name))
+                _require(solver, size >= extent / target.shrink)
         if name in target.keep_aspect and name not in target.freeze:
-            solver.addConstraint((sizes["x"] == (old.w / old.h) * sizes["y"]) | "required")
+            _require(solver, sizes["x"] == (old.w / old.h) * sizes["y"])
 
 
 def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target, list[str]]:
@@ -376,11 +409,7 @@ def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target
             f"{wanted:g} mm: {reason}"
         )
         totals[axis] = None
-    reached = Target(
-        target.gap, target.stretch, target.shrink, totals["x"], totals["y"],
-        target.freeze, target.keep_aspect, target.fill,
-    )  # fmt: skip
-    return reached, notes
+    return replace(target, width=totals["x"], height=totals["y"]), notes
 
 
 def _solve(grid: Grid, limits: dict[str, Rect], target: Target) -> dict[str, list[float]]:
@@ -455,15 +484,34 @@ def _occupancy(boxes: dict[str, Rect], width: float, height: float) -> float:
     return sum(box.w * box.h for box in boxes.values()) / (width * height)
 
 
-def _gutter_range(grid: Grid, positions: dict[str, list[float]] | None) -> tuple[float, float]:
-    """Smallest and largest gutter of the grid: as it is now, or at ``positions``."""
-    sizes = []
-    for axis in AXES:
-        for i, (size, gutter) in enumerate(grid.strips(axis)):
-            if not gutter:
-                continue
-            sizes.append(size if positions is None else positions[axis][i + 1] - positions[axis][i])
+def _gutter_range(grid: Grid, positions: dict[str, list[float]]) -> tuple[float, float]:
+    """Smallest and largest gutter of the solved grid."""
+    sizes = [
+        positions[axis][i + 1] - positions[axis][i]
+        for axis in AXES
+        for i, (_size, gutter) in enumerate(grid.strips(axis))
+        if gutter
+    ]
     return (min(sizes), max(sizes)) if sizes else (0.0, 0.0)
+
+
+def _gaps_between(boxes: dict[str, Rect]) -> tuple[float, float]:
+    """Smallest and largest space between facing panels, measured on the boxes themselves.
+
+    This is the "before" number: the grid the optimizer works on is built after the panels
+    have grown into the white space, so its gutters are already the ones asked for.
+    """
+    gaps = []
+    for name, rect in boxes.items():
+        others = [box for key, box in boxes.items() if key != name]
+        for axis in AXES:
+            before, after = _facing(rect, others, axis)
+            low, high = (rect.left, rect.right) if axis == "x" else (rect.top, rect.bottom)
+            if before:
+                gaps.append(max(0.0, low - max(before)))
+            if after:
+                gaps.append(max(0.0, min(after) - high))
+    return (min(gaps), max(gaps)) if gaps else (0.0, 0.0)
 
 
 def _union_length(intervals: list[tuple[float, float]]) -> float:
@@ -546,8 +594,98 @@ def _place(
     return len(found["x"]) + len(found["y"])
 
 
-def _notes(report: Report, grid: Grid, positions: dict[str, list[float]], target: Target) -> None:
-    """Add what the user has to know to judge the result: insets, guides, rows left short."""
+@dataclass
+class Arrangement:
+    """One solved arrangement: where the panels end up, and on what grid."""
+
+    grid: Grid
+    positions: dict[str, list[float]]
+    boxes: dict[str, Rect]  # the new panel boxes, insets included
+    filled: dict[str, Rect]  # the boxes after growing into the white space, before solving
+    target: Target  # the target as it was actually reached
+    notes: list[str]
+
+    @property
+    def size(self) -> tuple[float, float]:
+        """Width and height of the optimized figure."""
+        return self.positions["x"][-1], self.positions["y"][-1]
+
+    def slack(self) -> list[tuple[float, float, float, list[str]]]:
+        """Rows that still have width to spare."""
+        return _row_slack(self.boxes, self.grid, self.positions, self.size[0], self.target.gap)
+
+
+def _arrange(layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: float) -> Arrangement:
+    """Fill the white space, recover the grid, and solve the boundaries.
+
+    Raises:
+        PackError: the boxes are not a grid, or the target cannot be reached.
+    """
+    stretch = target.stretch if target.stretch is not None else 1.0
+    filled = (
+        fill_white_space(boxes, layout.width, layout.height, target.gap, stretch, target.limits)
+        if target.fill
+        else boxes
+    )
+    grid = read_grid(filled, tolerance)
+    unknown = (set(target.freeze) | set(target.keep_aspect) | set(target.limits)) - set(grid.spans)
+    if unknown:
+        raise PackError(f"these panels are not placed by the layout: {sorted(unknown)}")
+
+    reached, notes = _reachable(grid, target, layout.width)
+    positions = _solve(grid, boxes, reached)
+    new_boxes: dict[str, Rect] = {}
+    for name in grid.spans:
+        i0, i1 = grid.span(name, "x")
+        j0, j1 = grid.span(name, "y")
+        new_boxes[name] = Rect.from_edges(
+            positions["x"][i0], positions["y"][j0], positions["x"][i1], positions["y"][j1]
+        )
+    for name, host in grid.insets.items():  # an inset keeps its place inside its host
+        new_boxes[name] = _map_axes(filled[host], new_boxes[host], [boxes[name]])[0]
+    return Arrangement(grid, positions, new_boxes, filled, reached, notes)
+
+
+def _choose_stretch(
+    layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: float
+) -> tuple[float, Arrangement]:
+    """The smallest distortion that leaves no row short, and the arrangement it gives.
+
+    Trying is cheap (one linear solve per step), and it is what turns "optimize, read the
+    note, optimize again with a bigger limit" into one command. The search stops at
+    :data:`STRETCH_CEILING`: beyond that a figure is not being tidied, it is being redrawn,
+    and that is a decision to make on purpose with ``--max-stretch``.
+
+    Raises:
+        PackError: no factor up to the ceiling gives an arrangement at all.
+    """
+    failure: PackError | None = None
+    best: Arrangement | None = None
+    factor = 1.0
+    while factor <= STRETCH_CEILING + 1e-9:
+        try:
+            arranged = _arrange(layout, boxes, replace(target, stretch=factor), tolerance)
+        except PackError as exc:  # too little room at this factor; a bigger one may work
+            failure = exc
+            factor += STRETCH_STEP
+            continue
+        best = arranged
+        # Good enough: every row fills the width, and nothing had to give (a figure that had
+        # to become narrower to fit its own panels is not what was asked for).
+        if not arranged.slack() and not arranged.notes:
+            return factor, arranged
+        factor += STRETCH_STEP
+    if best is None:
+        raise PackError(
+            f"no arrangement works between 1.00x and {STRETCH_CEILING:.2f}x with "
+            f"{target.gap:g} mm gutters: {failure}"
+        ) from failure
+    return round(best.target.stretch or STRETCH_CEILING, 2), best
+
+
+def _notes(report: Report, arranged: Arrangement) -> None:
+    """What the user has to know to judge the result: insets, guides, rows left short."""
+    grid, target = arranged.grid, arranged.target
     if grid.insets:
         report.notes.append(
             "insets kept their place inside their host: "
@@ -558,79 +696,96 @@ def _notes(report: Report, grid: Grid, positions: dict[str, list[float]], target
             f"{report.guides[0] - report.guides[1]} shared axes edges no longer coincide: panels "
             "in different rows grew by different factors; check `plotplate align` after rebuilding"
         )
-    for top, bottom, empty, names in _row_slack(
-        report.after, grid, positions, report.width, target.gap
-    ):
+    for index, (top, bottom, empty, names) in enumerate(arranged.slack(), start=1):
         covered = report.width - empty - target.gap * (len(names) - 1)
+        needed = (target.stretch or 1.0) * (covered + empty) / covered
+        room = (
+            f"raising the limit to {needed:.2f} would fill it"
+            if needed <= STRETCH_CEILING
+            else "filling it would mean growing them by more than half again"
+        )
         report.notes.append(
-            f"the row at {top:.0f}-{bottom:.0f} mm still has {empty:.0f} mm of width to spare: "
-            f"{', '.join(names)} hit the {target.stretch:.2f}x limit; about "
-            f"--max-stretch {target.stretch * (covered + empty) / covered:.2f} would fill it"
+            f"row {index} ({', '.join(names)}, {top:.0f}-{bottom:.0f} mm) is {empty:.0f} mm "
+            f"narrower than the figure: its panels reached their {target.stretch:.2f}x limit, and "
+            f"{room}"
         )
     if report.occupancy[1] <= report.occupancy[0] + 0.005:
         report.notes.append("the panels already used the space: nothing much to gain here")
 
 
-def optimize(layout: Layout, target: Target, tolerance: float = 1.0) -> tuple[dict[str, Any], Report]:
+def _explain(
+    layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: float, failure: PackError
+) -> PackError:
+    """Turn a failure at a limit the user chose into advice: which limit would work.
+
+    Finding that out costs one more search, and it is the difference between "these limits
+    cannot all hold at once" and a number to type.
+    """
+    try:
+        working, _arranged = _choose_stretch(layout, boxes, replace(target, stretch=None), tolerance)
+    except PackError:
+        return failure
+    return PackError(
+        f"no arrangement fits with panels growing at most {target.stretch:.2f}x and "
+        f"{target.gap:g} mm gutters. --max-stretch {working:.2f} works (or leave it out, and it "
+        "is chosen for you); a smaller --gap also helps"
+    )
+
+
+def optimize(
+    layout: Layout, target: Target | None = None, tolerance: float = 1.0
+) -> tuple[dict[str, Any], Report]:
     """Return an optimized copy of ``layout`` (as a raw mapping) and what changed.
 
     Args:
         layout: the layout to rearrange; its boxes are read as they resolve.
-        target: the gap, the distortion limits and the size to fill.
+        target: the gap, the distortion limits and the size to fill. By default the gap is
+            4 mm and the distortion is chosen automatically.
         tolerance: panel edges this close (mm) count as one shared boundary.
 
     Raises:
         PackError: the boxes do not form a grid, or the limits leave no solution.
     """
+    target = target if target is not None else Target()
     data = layout.resolved()
     boxes = {name: spec.box for name, spec in layout.panels.items()}
-    filled = (
-        fill_white_space(boxes, layout.width, layout.height, target.gap, target.stretch)
-        if target.fill
-        else boxes
-    )
-    grid = read_grid(filled, tolerance)
-    unknown = (set(target.freeze) | set(target.keep_aspect)) - set(grid.spans)
-    if unknown:
-        raise PackError(f"--freeze/--keep-aspect name panels that are not placed: {sorted(unknown)}")
+    automatic = target.stretch is None
+    if automatic:
+        stretch, arranged = _choose_stretch(layout, boxes, target, tolerance)
+        target = replace(target, stretch=stretch)
+    else:
+        try:
+            arranged = _arrange(layout, boxes, target, tolerance)
+        except PackError as exc:
+            raise _explain(layout, boxes, target, tolerance, exc) from exc
 
-    target, notes = _reachable(grid, target, layout.width)
-    positions = _solve(grid, boxes, target)
-    new_boxes: dict[str, Rect] = {}
-    for name in grid.spans:
-        i0, i1 = grid.span(name, "x")
-        j0, j1 = grid.span(name, "y")
-        new_boxes[name] = Rect.from_edges(
-            positions["x"][i0], positions["y"][j0], positions["x"][i1], positions["y"][j1]
-        )
-    for name, host in grid.insets.items():  # an inset keeps its place inside its host
-        new_boxes[name] = _map_axes(filled[host], new_boxes[host], [boxes[name]])[0]
-
-    width, height = positions["x"][-1], positions["y"][-1]
+    width, height = arranged.size
     area = area_section(data)
     area["width"] = round(width, 2)
     area["height"] = round(height, 2)
     guides = (
         len(layout.guides["x"]) + len(layout.guides["y"]),
-        _place(data, layout, boxes, new_boxes, tolerance),
+        _place(data, layout, boxes, arranged.boxes, tolerance),
     )
     report = Report(
         width=width,
         height=height,
         before=boxes,
-        after=new_boxes,
+        after=arranged.boxes,
         occupancy=(
             _occupancy(boxes, layout.width, layout.height),
-            _occupancy(new_boxes, width, height),
+            _occupancy(arranged.boxes, width, height),
         ),
-        gutters=(_gutter_range(grid, None), _gutter_range(grid, positions)),
+        gutters=(_gaps_between(boxes), _gutter_range(arranged.grid, arranged.positions)),
         overlaps=sum(
             1
             for a, b in combinations(sorted(boxes), 2)
             if boxes[a].intersection_area(boxes[b]) > 0.01
         ),
         guides=guides,
+        stretch=target.stretch or 1.0,
+        automatic=automatic,
     )
-    report.notes.extend(notes)
-    _notes(report, grid, positions, target)
+    report.notes.extend(arranged.notes)
+    _notes(report, arranged)
     return data, report

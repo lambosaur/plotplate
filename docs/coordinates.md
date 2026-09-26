@@ -7,6 +7,10 @@
 This file names the levels a figure is built from, and gives the conversions between their coordinate
 systems.
 
+![The levels of a figure: the sheet on the left, the figure area magnified on the right, with page, area, panel, axes, guide, gutter, margins and caption labelled](images/glossary.png)
+
+Everything below is that picture in words.
+
 ## The levels
 
 | level | what it is | who defines it |

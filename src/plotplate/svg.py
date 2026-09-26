@@ -241,8 +241,45 @@ def _rect_box(element: ET.Element, matrix: np.ndarray) -> Rect:
     return Rect(*(float(round(v, 3)) for v in (box.x, box.y, box.w, box.h)))
 
 
-def read_svg_boxes(path: str | Path) -> dict[str, Any]:
+def _known_ids(base: dict[str, Any] | None) -> dict[str, str]:
+    """The ids ``export_svg`` writes, mapped back to the names they stand for.
+
+    Inkscape's "Plain SVG" and "Optimised SVG" drop ``inkscape:label`` and keep only the id,
+    and Illustrator has its own ideas about names. The ids are ours (``panel-a``,
+    ``axes-a-roc``), so as long as the layout being updated still lists the panel, its name can
+    be recovered instead of being read as a new panel called ``panel-a``.
+    """
+    names: dict[str, str] = {}
+    for name, panel in (base or {}).get("panels", {}).items():
+        names[f"panel-{_safe_id(str(name))}"] = str(name)
+        for axes in (panel or {}).get("axes") or {}:
+            names[f"axes-{_safe_id(str(name))}-{_safe_id(str(axes))}"] = f"{name}/{axes}"
+    return names
+
+
+def _axes_label(label: str, names: dict[str, str]) -> str:
+    """Turn the id of an axes rectangle back into ``panel/axes``.
+
+    ``axes-A-main`` is what the exporter writes for a panel whose axes comes from ``margins:``,
+    and such an axes has no entry of its own in the layout; the panel does, so its name is
+    enough to split the id.
+    """
+    if "/" in label or not label.startswith("axes-"):
+        return label
+    rest = label.removeprefix("axes-")
+    for key, name in names.items():
+        prefix = key.removeprefix("panel-") + "-"
+        if key.startswith("panel-") and rest.startswith(prefix):
+            return f"{name}/{rest[len(prefix) :]}"
+    return label
+
+
+def read_svg_boxes(path: str | Path, names: dict[str, str] | None = None) -> dict[str, Any]:
     """Read page size and labelled rectangles from an SVG (all in mm).
+
+    Args:
+        path: the SVG file.
+        names: ids to read as names, for files saved without labels (see :func:`_known_ids`).
 
     Returns:
         ``{"width", "height", "panels": {name: Rect}, "axes": {(panel, axes): Rect},
@@ -259,13 +296,13 @@ def read_svg_boxes(path: str | Path) -> dict[str, Any]:
     }
 
     def record(element: ET.Element, matrix: np.ndarray, layer: str) -> None:
-        label = _object_name(element)
+        label = (names or {}).get(element.get("id") or "") or _object_name(element)
         if not label:
             message = f"rect {element.get('id')} in layer {layer} has no label; skipped"
             result["issues"].append(Issue("warning", "svg-unlabelled", message))
         elif layer == "panels":
             result["panels"][label] = _rect_box(element, matrix)
-        elif "/" in label:
+        elif "/" in (label := _axes_label(label, names or {})):
             panel, axes = label.split("/", 1)
             result["axes"][(panel, axes)] = _rect_box(element, matrix)
         else:
@@ -276,8 +313,9 @@ def read_svg_boxes(path: str | Path) -> dict[str, Any]:
         matrix = matrix @ _parse_transform(element.get("transform"))
         if element.tag == _q("g"):
             # Inkscape marks layers with inkscape:groupmode; Illustrator exports layers as
-            # groups whose id is the layer name.
-            name = _object_name(element).lower()
+            # groups whose id is the layer name. A file saved without labels ("Plain SVG")
+            # keeps only the id this exporter wrote, `layer-panels`.
+            name = _object_name(element).lower().removeprefix("layer-")
             if element.get(_GROUPMODE) == "layer" or name in {"panels", "axes"}:
                 layer = name
         if element.tag == _q("rect") and layer in {"panels", "axes"}:
@@ -297,9 +335,10 @@ def import_svg(
 
     Panels and axes found in the SVG get explicit page-coordinate ``box`` entries (guide
     references on edited axes are replaced by numbers). Panels missing from the SVG are
-    reported, not deleted.
+    reported, not deleted, and a rectangle whose label was lost by the drawing program is
+    recognised by the id ``plotplate svg-export`` gave it.
     """
-    found = read_svg_boxes(path)
+    found = read_svg_boxes(path, _known_ids(base))
     issues: list[Issue] = list(found["issues"])
     data: dict[str, Any] = copy.deepcopy(base) if base else {"schema": 1, "name": Path(path).stem}
     area = area_section(data)

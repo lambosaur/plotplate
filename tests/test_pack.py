@@ -1,5 +1,7 @@
 """The optimizer: recover the grid, spend the white space, respect the limits."""
 
+import json
+
 import pytest
 
 import plotplate as pp
@@ -123,3 +125,44 @@ def test_cli_writes_the_optimized_variant_next_to_the_input(ragged, tmp_path):
 def test_cli_dry_run_writes_nothing(ragged, tmp_path):
     assert main(["optimize", str(ragged.path), "--dry-run"]) == 0
     assert not (tmp_path / "layout.optimized.yaml").exists()
+
+
+def test_the_stretch_is_chosen_when_it_is_not_given(ragged):
+    """One run decides: the smallest limit that fills every row, and it says which."""
+    _data, report = optimize(ragged, Target(gap=4.0))
+    assert report.automatic and 1.0 < report.stretch <= 2.0
+    assert report.width == pytest.approx(183, abs=0.01)  # the figure kept its width
+    assert not report.notes  # nothing left to say: no row is short, nothing had to give
+    assert report.occupancy[1] > 0.85
+
+    tighter = optimize(ragged, Target(gap=4.0, stretch=report.stretch - 0.1))[1]
+    assert tighter.notes, "a smaller limit leaves something on the table, and says so"
+
+
+def test_a_limit_that_cannot_work_names_one_that_can(ragged):
+    """A width you asked for, with a limit that cannot reach it: the message has the number."""
+    with pytest.raises(PackError, match=r"--max-stretch 1\.\d+ works"):
+        optimize(ragged, Target(gap=4.0, stretch=1.0, width=200.0))
+
+
+def test_per_panel_limits_come_from_the_layout_file(ragged, tmp_path):
+    data = {
+        **RAGGED,
+        "optimize": {"gap": 4, "panels": {"B": {"freeze": True}, "A": {"stretch": 1.05}}},
+    }
+    dump_yaml(data, tmp_path / "layout.yaml")
+    assert main(["optimize", str(tmp_path), "--dry-run"]) == 0
+
+    layout = pp.Layout.load(tmp_path / "layout.yaml")
+    _out, report = optimize(layout, Target(gap=4.0, freeze=("B",), limits={"A": 1.05}))
+    assert report.factors("B") == pytest.approx((1.0, 1.0), abs=0.01)
+    assert report.factors("A")[0] <= 1.05 + 1e-6
+
+
+def test_json_output_is_machine_readable(ragged, capsys):
+    assert main(["optimize", str(ragged.path), "--dry-run", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["output"] is None and payload["stretch_chosen_automatically"] is True
+    assert set(payload["panels"]) == {"A", "B", "C", "D"}
+    assert payload["panels"]["A"]["factor"][0] >= 1.0
+    assert payload["occupancy"]["after"] > payload["occupancy"]["before"]

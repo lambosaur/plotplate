@@ -151,6 +151,15 @@ Rotations are not supported; everything else (groups, transforms, units) is.
 Rectangles without a name are skipped with a warning.
 Import updates only boxes: style, guides and axes grid settings in an existing `layout.yaml` are kept.
 
+**Names survive the drawing program.**
+A panel is identified by its label, and when the program drops labels — Inkscape's *Plain SVG* and
+*Optimised SVG* do — by the id `plotplate svg-export` wrote (`panel-a`, `axes-a-roc`), which is read
+back against the layout being updated.
+So any of Inkscape's save formats round-trips.
+What is not recovered is a panel you *renamed* in the drawing: plotplate then sees one new panel and
+one missing one (both reported, nothing deleted).
+Rename panels in the layout, or use `plotplate diff old.yaml new.yaml` to get a revision plan.
+
 `plotplate svg-export layout.yaml --background source.png` goes the other way: it writes an SVG with
 the source image on a locked layer, ready to correct in Inkscape.
 

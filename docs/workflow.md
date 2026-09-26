@@ -136,9 +136,11 @@ plotplate optimize figures/figure_1/layout.detected.yaml --gap 4   # -> layout.o
 plotplate view figures/figure_1                                    # compare them
 ```
 
-Every gutter becomes 4 mm and the recovered space goes to the panels, within a distortion limit you
-set (`--max-stretch`, 1.2 by default).
-What the limit leaves on the table is reported rather than guessed at; see [optimize.md](optimize.md).
+Every gutter becomes 4 mm and the recovered space goes to the panels.
+How much a panel may grow is chosen for you — the smallest factor that fills every row — and reported,
+so one run is usually enough; `--max-stretch` sets it yourself, and limits that belong to the figure
+(a panel that must not be resized, a photograph's aspect) live in the layout's `optimize:` section.
+See [optimize.md](optimize.md).
 Keep the file you prefer as `layout.yaml`, and rebuild.
 
 ## 2. Draw each panel

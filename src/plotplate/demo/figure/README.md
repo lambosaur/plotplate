@@ -25,12 +25,14 @@ A complete, synthetic walkthrough. Nothing here uses real data.
 1. **Spend the white space it wasted:** `figures/figure_1/layout.optimized.yaml`.
 
    ```sh
-   plotplate optimize figures/figure_1/layout.detected.yaml --gap 4 --max-stretch 1.5 --height 168
+   plotplate optimize figures/figure_1/layout.detected.yaml --gap 4 --height 168
    ```
 
-   Every gutter becomes 4 mm and the recovered space goes to the panels — here from 77 % of the figure
-   covered to 92 % — while no panel grows by more than half. `--height 168` also brings the figure under
-   Nature's 170 mm maximum, which the draft exceeded. See `docs/optimize.md` in the plotplate repository.
+   Gutters of 8.6 to 20.8 mm become 4 mm everywhere, and the space that frees goes to the panels: they
+   cover 77 % of the figure before, 88 % after. Nobody chose how much the panels may grow — the
+   optimizer took the smallest factor that fills every row (1.10x) and says so. `--height 168` also
+   brings the figure under Nature's 170 mm maximum, which the draft exceeded.
+   See `docs/optimize.md` in the plotplate repository.
 
 1. **The layout that is maintained:** `figures/figure_1/layout.yaml`.
    Written by hand from those drafts: a round 183 × 150 mm, a mosaic instead of typed boxes, and named

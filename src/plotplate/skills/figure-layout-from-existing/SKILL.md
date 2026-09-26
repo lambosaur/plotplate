@@ -56,8 +56,8 @@ The boxes are where the old figure put them, so the gutters are uneven and space
    reports what it changed: the gutters, the share of the figure the panels cover, and each panel's
    factor.
 1. Report the notes to the user rather than acting on them alone.
-   `--max-stretch` (1.2 by default) is the user's call: raising it grows panels more, and a note says
-   what it would buy.
+   `--max-stretch` is the user's call: a smaller limit distorts less, and a note says what it would
+   buy.
 1. It refuses an arrangement that is not a grid (interlocking panels).
    Merge those panels instead.
 

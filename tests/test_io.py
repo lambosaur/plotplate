@@ -243,3 +243,20 @@ def test_doctor_reports_the_current_environment(capsys):
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
     assert "versions agree" in out and "fonts:" in out
+
+
+def test_svg_import_survives_a_plain_svg_save(layout, tmp_path):
+    """Inkscape's Plain SVG drops inkscape:label; the ids plotplate wrote still name the panels."""
+    import re
+
+    svg = export_svg(layout, tmp_path / "l.svg")
+    stripped = re.sub(r'\s+inkscape:label="[^"]*"', "", svg.read_text(encoding="utf-8"))
+    plain = tmp_path / "plain.svg"
+    plain.write_text(stripped, encoding="utf-8")
+
+    data, issues = import_svg(plain, layout.raw)
+    assert set(data["panels"]) == set(layout.panels)  # not "panel-A", and nothing lost
+    assert data["panels"]["A"]["axes"]["roc"]["box"] == pytest.approx(
+        layout.panels["A"].axes["roc"].region.to_list(), abs=0.01
+    )
+    assert [i.code for i in issues] == []
