@@ -70,10 +70,14 @@ several panels already share.
   axes edge was used".
 - Coordinates are page millimetres, comparable across panels.
 
+Legends and colorbars are recorded automatically (`A.roc.legend`), and any other artist can be
+registered with `panel.anchor("key", artist)`.
+
 For features that are not an axes edge, register a point in the panel code:
 
 ```python
 panel.mark("zero", ax=ax, x=0, y=0)  # data coordinates of that axes
+panel.anchor("key", legend)  # the box of any artist
 panel.page_point(ax, x=0, y=0)  # the same conversion, returned to you
 ```
 

@@ -83,6 +83,7 @@ class Panel:
         self.spec = spec
         self._placed: dict[int, list[tuple[Axes, Rect, Rect]]] = {}
         self._names: dict[int, str] = {}  # id(axes) -> layout name
+        self._anchors: dict[str, Any] = {}  # name -> artist whose box is measured
         self._marks: dict[str, tuple[Any, float | None, float | None]] = {}
 
     # ------------------------------------------------------------------ geometry
@@ -255,6 +256,50 @@ class Panel:
         """
         self._marks[name] = (ax, x, y)
 
+    def anchor(self, name: str, artist: Any) -> None:
+        """Record the box of any artist (a legend, an inset, a text) for alignment checks.
+
+        The artist's bounding box is measured when the panel is saved and written to
+        ``panels/<panel>.json``, in plate millimetres, so it can be used in ``alignment.yaml``.
+        Legends and colorbars are recorded automatically; use this for anything else.
+        """
+        self._anchors[name] = artist
+
+    def _artist_edges(self, artist: Any, fig: Figure, renderer: Any) -> dict[str, float] | None:
+        """Edges of an artist's bounding box, in plate mm."""
+        try:
+            extent = artist.get_window_extent(renderer)
+        except Exception:  # noqa: BLE001 - an artist that cannot be measured is skipped
+            return None
+        width, height = fig.bbox.width, fig.bbox.height
+        if not (extent.width > 0 and extent.height > 0):
+            return None
+        return {
+            "left": self.box.x + extent.x0 / width * self.box.w,
+            "right": self.box.x + extent.x1 / width * self.box.w,
+            "top": self.box.y + (1 - extent.y1 / height) * self.box.h,
+            "bottom": self.box.y + (1 - extent.y0 / height) * self.box.h,
+        }
+
+    def _anchor_entries(self, fig: Figure) -> dict[str, Any]:
+        """Legends, colorbars and registered artists, as measured boxes."""
+        renderer = fig._get_renderer()  # type: ignore[attr-defined]
+        fig.draw(renderer)
+        found: dict[str, Any] = {}
+        candidates: list[tuple[str, Any]] = list(self._anchors.items())
+        for index, legend in enumerate(fig.legends, start=1):
+            candidates.append((f"legend{index}" if len(fig.legends) > 1 else "legend", legend))
+        for ax in fig.axes:
+            axes_legend: Any = ax.get_legend()
+            if axes_legend is not None and ax.get_visible():
+                name = self._names.get(id(ax)) or ax.get_label() or "axes"
+                candidates.append((f"{name}.legend", axes_legend))
+        for name, artist in candidates:
+            edges = self._artist_edges(artist, fig, renderer)
+            if edges is not None:
+                found[name] = {"box_edges": {key: round(value, 3) for key, value in edges.items()}}
+        return found
+
     def page_point(self, ax: Any, x: float, y: float) -> tuple[float, float]:
         """Page coordinates (mm) of a point given in data coordinates of ``ax``."""
         fx, fy = ax.figure.transFigure.inverted().transform(ax.transData.transform((x, y)))
@@ -294,7 +339,7 @@ class Panel:
                 continue
             px, py = self.page_point(target, x if x is not None else 0.0, y if y is not None else 0.0)
             marks[name] = {"x": round(px, 3), "y": round(py, 3)}
-        return {"axes": axes_entries, "marks": marks}
+        return {"axes": axes_entries, "marks": marks, "anchors": self._anchor_entries(fig)}
 
     def check(self, fig: Figure) -> list[Issue]:
         """Run the size/font/clipping/overlap/line checks without writing files."""

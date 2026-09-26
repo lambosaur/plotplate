@@ -66,6 +66,9 @@ def read_features(layout: Layout) -> tuple[dict[str, Feature], list[Issue]]:
         for name, entry in (geometry.get("axes") or {}).items():
             feature = Feature(panel, name, "axes", dict(entry["box_edges"]), entry.get("spines", []))
             features[feature.reference] = feature
+        for name, entry in (geometry.get("anchors") or {}).items():
+            feature = Feature(panel, name, "anchor", dict(entry["box_edges"]), [])
+            features[feature.reference] = feature
         for name, entry in (geometry.get("marks") or {}).items():
             feature = Feature(panel, name, "mark", {"x": entry["x"], "y": entry["y"]}, [])
             features[feature.reference] = feature
@@ -131,7 +134,7 @@ def near_misses(
         values = [
             (ref, feature.values[match])
             for ref, feature in features.items()
-            if feature.kind == "axes" and match in feature.values
+            if feature.kind in ("axes", "anchor") and match in feature.values
         ]
         values.sort(key=lambda item: item[1])
         group: list[tuple[str, float]] = []

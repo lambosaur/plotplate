@@ -71,3 +71,47 @@ def test_cli_align_uses_alignment_file(drawn, tmp_path):
               tmp_path / "alignment.yaml")  # fmt: skip
     assert main(["align", str(drawn.path)]) == 0
     assert main(["preview", str(drawn.path), "--rules"]) == 0
+
+
+def test_legends_and_named_artists_become_anchors(tmp_path):
+    data = {
+        "schema": 1,
+        "page": {"width": 100, "height": 60},
+        "panels": {"A": {"box": [0, 0, 100, 60], "axes": {"main": {"box": [10, 5, 80, 45]}}}},
+    }
+    dump_yaml(data, tmp_path / "layout.yaml")
+    layout = pp.Layout.load(tmp_path / "layout.yaml")
+    panel = layout.panel("A")
+    fig = panel.figure()
+    ax = panel.axes(fig, "main")
+    ax.plot([0, 1], [0, 1], label="model")
+    legend = ax.legend(loc="lower right")
+    text = ax.text(0.1, 0.9, "note", transform=ax.transAxes)
+    panel.anchor("note", text)
+    panel.save(fig, formats=["pdf"])
+
+    features, _ = read_features(layout)
+    assert "A.main.legend" in features and "A.note" in features
+    assert features["A.main.legend"].kind == "anchor"
+    box = features["A.main.legend"].values
+    assert 10 <= box["left"] < box["right"] <= 90  # inside the axes, in plate mm
+    assert legend.get_visible()
+
+
+def test_features_check_reports_unnamed_axes(tmp_path, capsys):
+    data = {
+        "schema": 1,
+        "page": {"width": 100, "height": 60},
+        "panels": {"A": {"box": [0, 0, 100, 60], "axes": {"main": {"box": [10, 5, 50, 45]}}}},
+    }
+    dump_yaml(data, tmp_path / "layout.yaml")
+    layout = pp.Layout.load(tmp_path / "layout.yaml")
+    panel = layout.panel("A")
+    fig = panel.figure()
+    panel.axes(fig, "main").plot([0, 1])
+    fig.add_axes((0.7, 0.6, 0.2, 0.2)).plot([1, 0])  # anonymous
+    panel.save(fig, formats=["pdf"])
+
+    assert main(["features", str(layout.path)]) == 0  # a warning without --check
+    assert main(["features", str(layout.path), "--check"]) == 1
+    assert "unnamed-axes" in capsys.readouterr().out

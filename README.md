@@ -225,6 +225,7 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 | `plotplate preview` / `plotplate latex` / `plotplate check` | individual build steps |
 | `plotplate bundle` / `plotplate export` | deliver to Overleaf or to a journal |
 | `plotplate journals` / `plotplate palettes` / `plotplate fonts` / `plotplate skills` | presets, colours, fonts, agent skills |
+| `plotplate features --check` | list panel parts; fail when any axes is unnamed |
 | `plotplate doctor` | which versions and environments are in play |
 | `plotplate demo` | copy and run a bundled example case |
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from importlib import resources
@@ -556,6 +557,9 @@ def cmd_align(args: argparse.Namespace) -> int:
     return status
 
 
+_ANONYMOUS = re.compile(r"^ax\d+$")
+
+
 def cmd_features(args: argparse.Namespace) -> int:
     """List every measurable feature of the saved panels, ready to paste into alignment.yaml."""
     from .align import read_features
@@ -566,7 +570,7 @@ def cmd_features(args: argparse.Namespace) -> int:
         print("no geometry yet: draw the panels first (`plotplate build`)")
         return _print_issues(issues)
     width = max(len(ref) for ref in features)
-    print(f"{'feature':{width}}  kind   coordinates (mm)")
+    print(f"{'feature':{width}}  kind    coordinates (mm)")
     for ref, feature in sorted(features.items()):
         if feature.kind == "mark":
             detail = f"x {feature.values['x']:.2f}  y {feature.values['y']:.2f}"
@@ -574,9 +578,20 @@ def cmd_features(args: argparse.Namespace) -> int:
             edges = "  ".join(
                 f"{e} {feature.values[e]:.2f}" for e in ("left", "right", "top", "bottom")
             )
-            drawn = ",".join(feature.spines) or "no spines"
-            detail = f"{edges}   [{drawn}]"
-        print(f"{ref:{width}}  {feature.kind:5}  {detail}")
+            spines = ",".join(feature.spines) or "no spines"
+            detail = edges if feature.kind == "anchor" else f"{edges}   [{spines}]"
+        print(f"{ref:{width}}  {feature.kind:6}  {detail}")
+
+    anonymous = sorted(ref for ref, feature in features.items() if _ANONYMOUS.match(feature.name))
+    if anonymous:
+        issues.append(
+            Issue(
+                "error" if args.check else "warning",
+                "unnamed-axes",
+                f"{len(anonymous)} axes have no name ({', '.join(anonymous)}): add an axes entry "
+                'in the layout, or ax.set_label("...") in the panel code',
+            )
+        )
     return _print_issues(issues)
 
 
@@ -852,6 +867,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("features", cmd_features, "List the measurable features of the saved panels.")
     p.add_argument("layout")
+    p.add_argument("--check", action="store_true", help="fail when axes have no name")
 
     p = add("align", cmd_align, "Check that panel features line up, using measured page coordinates.")
     p.add_argument("layout")
