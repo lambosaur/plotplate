@@ -204,6 +204,8 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 - [docs/alignment.md](docs/alignment.md): guides, measured geometry, alignment rules.
 - Revising a figure later: [workflow.md](docs/workflow.md#changing-the-layout-later) and the
   `figure-layout-revision` skill.
+- [docs/coordinates.md](docs/coordinates.md): page, area, panel, axes, and the conversions between
+  them.
 - [docs/layout-spec.md](docs/layout-spec.md): the `layout.yaml` reference.
 - [docs/constraints.md](docs/constraints.md): panel boxes solved from relations instead of typed
   numbers.

@@ -80,3 +80,24 @@ def test_auto_labels_follow_reading_order(layout_data):
 def test_labels_id_mode_is_the_default(layout_data):
     panels = pp.Layout(layout_data).panels
     assert panels["A"].label == "a"  # the key, in the journal's case
+
+
+def test_sheet_section_checks_that_the_figure_fits(layout_data):
+    layout_data["area"] = {"width": 183, "height": 160}
+    layout_data["page"] = {"paper": "a4", "margins": 25, "caption": 25}
+    layout_data.pop("mosaic")
+    layout_data["panels"] = {"A": {"box": [0, 0, 183, 160]}}
+    layout = pp.Layout(layout_data)
+    assert layout.sheet_size() == (210.0, 297.0, 160.0, 247.0)
+    codes = {i.code for i in layout.validate()}
+    assert "wider-than-text" in codes  # 183 mm on a 160 mm text block
+
+    layout_data["area"]["height"] = 230  # 230 + 25 caption > 247
+    layout_data["panels"] = {"A": {"box": [0, 0, 183, 230]}}
+    assert "taller-than-page" in {i.code for i in pp.Layout(layout_data).validate()}
+
+
+def test_page_without_area_still_means_the_figure_box(layout_data):
+    layout = pp.Layout(layout_data)  # legacy spelling used by every existing layout
+    assert (layout.width, layout.height) == (183.0, 60.0)
+    assert layout.sheet_size() is None

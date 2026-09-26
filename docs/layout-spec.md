@@ -7,6 +7,11 @@
 This file describes `layout.yaml`, the single source of truth for one figure.
 Python, the preview, the Inkscape SVG and the generated LaTeX all read it.
 
+## Levels
+
+`page` (the sheet) contains `area` (the figure), which contains `panels`, which contain `axes`.
+A panel is one matplotlib figure saved as one file; see [coordinates.md](coordinates.md).
+
 ## Coordinates and units
 
 - All lengths are millimetres.
@@ -64,8 +69,9 @@ panels:
 | `journal` | no | journal preset: page widths, maximum height, style limits |
 | `style_files` | no | style YAML files merged in order, relative to the layout file |
 | `style` | no | inline style overrides |
-| `page.width` | yes | mm, or a width name of the journal preset (`single`, `double`…) |
-| `page.height` | yes | mm, or `solve` to compute it from the constraints |
+| `area.width` | yes | mm, or a width name of the journal preset (`single`, `double`…); `page.width` in older layouts |
+| `area.height` | yes | mm, or `solve` to compute it from the constraints |
+| `page` | no | the physical sheet: `paper` (a4, letter or `[w, h]`), `margins`, `caption` (mm) |
 | `labels` | no (default `id`) | `id`: the panel key is its letter. `auto`: keys are stable ids and letters are assigned in reading order |
 | `guides.x`, `guides.y` | no | named vertical and horizontal lines |
 | `mosaic` | no | grid shorthand for panel boxes |

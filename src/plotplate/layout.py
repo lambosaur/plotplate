@@ -134,11 +134,15 @@ class Layout:
         )
         self.style = self._resolve_style(data, base_dir)
 
-        page = data.get("page") or {}
-        self.width = self._resolve_width(page.get("width"))
-        if page.get("height") is None:
-            raise ValueError("page.height is required (mm, or 'solve' with constraints)")
-        raw_height = page["height"]
+        # `area:` is the figure's own box; `page:` then describes the sheet it must fit on.
+        # Layouts written before that split used `page:` for the box, which still works.
+        area = data.get("area")
+        self.sheet: dict[str, Any] | None = data.get("page") if area else None
+        area = area or data.get("page") or {}
+        self.width = self._resolve_width(area.get("width"))
+        if area.get("height") is None:
+            raise ValueError("area.height is required (mm, or 'solve' with constraints)")
+        raw_height = area["height"]
         solve_height = isinstance(raw_height, str) and raw_height.lower() in {"solve", "auto"}
         height = None if solve_height else float(raw_height)
         self.constraint_boxes: dict[str, Rect] = {}
@@ -146,7 +150,7 @@ class Layout:
             self.constraint_boxes, solved = self._solve_constraints(data, height)
             height = solved if solve_height else height
         elif solve_height:
-            raise ValueError("page.height: 'solve' needs a constraints section")
+            raise ValueError("area.height: 'solve' needs a constraints section")
         self.height = float(height)  # type: ignore[arg-type]
         self.page = Rect(0.0, 0.0, self.width, self.height)
 
@@ -392,6 +396,53 @@ class Layout:
 
     # ------------------------------------------------------------------ validation
 
+    def sheet_size(self) -> tuple[float, float, float, float] | None:
+        """The sheet as ``(width, height, text width, text height)`` in mm, if one is declared."""
+        if not self.sheet:
+            return None
+        papers = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
+        paper = self.sheet.get("paper", "a4")
+        size = papers.get(str(paper).lower()) if isinstance(paper, str) else tuple(paper)
+        if size is None:
+            raise ValueError(f"unknown paper {paper!r}; use a4, letter or [width, height] in mm")
+        margins = self.sheet.get("margins") or {}
+        if isinstance(margins, int | float):
+            margins = dict.fromkeys(("top", "bottom", "left", "right"), float(margins))
+        left = float(margins.get("left", 25))
+        right = float(margins.get("right", 25))
+        top = float(margins.get("top", 25))
+        bottom = float(margins.get("bottom", 25))
+        return (size[0], size[1], size[0] - left - right, size[1] - top - bottom)
+
+    def _sheet_issues(self) -> list[Issue]:
+        """Does the figure fit on the sheet, with room for its caption?"""
+        sizes = self.sheet_size()
+        if sizes is None:
+            return []
+        _, _, text_width, text_height = sizes
+        caption = float((self.sheet or {}).get("caption", 0))
+        issues: list[Issue] = []
+        if self.width > text_width + 1e-6:
+            issues.append(
+                Issue(
+                    "warning",
+                    "wider-than-text",
+                    f"the figure is {self.width} mm wide, the text block is {text_width:.1f} mm",
+                )
+            )
+        needed = self.height + caption
+        if needed > text_height + 1e-6:
+            detail = f" plus {caption:g} mm of caption" if caption else ""
+            issues.append(
+                Issue(
+                    "warning",
+                    "taller-than-page",
+                    f"the figure is {self.height} mm tall{detail}, the text block is "
+                    f"{text_height:.1f} mm: the caption would move to the next page",
+                )
+            )
+        return issues
+
     def _journal_issues(self) -> list[Issue]:
         """Page size against the journal's column widths and maximum height."""
         issues: list[Issue] = []
@@ -436,7 +487,7 @@ class Layout:
 
     def validate(self) -> list[Issue]:
         """Geometry sanity checks that need no panel files."""
-        issues = self._journal_issues() + self._constraint_issues()
+        issues = self._journal_issues() + self._sheet_issues() + self._constraint_issues()
         names = list(self.panels)
         for i, name in enumerate(names):
             spec = self.panels[name]

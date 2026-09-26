@@ -3,7 +3,11 @@ schema: 1
 name: fig1
 journal: nature
 style_files: [../style.yaml]
-page:
+# The sheet this figure is meant for; `plotplate validate` checks that it fits.
+# Nature-like margins: the text block is then exactly the 183 mm double-column width.
+page: {paper: a4, margins: {left: 13.5, right: 13.5, top: 25, bottom: 25}, caption: 25}
+# The figure's own box: everything below is in millimetres from its top-left corner.
+area:
   width: double  # 183 mm from the journal preset
   height: 150
 # Named alignment lines (page mm). Axes in different panels referencing the same guide

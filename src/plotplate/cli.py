@@ -149,7 +149,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     data = dict(layout.raw)
     data.pop("mosaic", None)
     data.pop("constraints", None)  # the solved boxes replace the rules
-    data["page"] = {**(data.get("page") or {}), "height": layout.height}
+    key = "area" if "area" in data else "page"
+    data[key] = {**(data.get(key) or {}), "height": layout.height}
     panels = {}
     for name, spec in layout.panels.items():
         entry = dict((layout.raw.get("panels") or {}).get(name) or {})
@@ -608,17 +609,21 @@ def cmd_check(args: argparse.Namespace) -> int:
     return status
 
 
-def panel_sources(layout: Layout) -> dict[str, Path]:
-    """Script of each panel: ``panels.<name>.source`` or the ``panel_<name>_*.py`` convention."""
+def panel_sources(layout: Layout, sources_dir: str | None = None) -> dict[str, Path]:
+    """Script of each panel: ``panels.<name>.source``, or ``panel_<name>_*.py`` in a folder.
+
+    Panel scripts are only needed by ``plotplate build``, which runs them for you. Every other
+    command works from the saved panel files, so the code can live anywhere (a notebooks/
+    folder, another repository) and be run however you like.
+    """
+    root = Path(sources_dir) if sources_dir else layout.base_dir
     sources: dict[str, Path] = {}
     for name in layout.panels:
         explicit = ((layout.raw.get("panels") or {}).get(name) or {}).get("source")
         if explicit:
             sources[name] = layout.base_dir / explicit
             continue
-        matches = sorted(layout.base_dir.glob(f"panel_{name}_*.py")) + sorted(
-            layout.base_dir.glob(f"panel_{name}.py")
-        )
+        matches = sorted(root.glob(f"panel_{name}_*.py")) + sorted(root.glob(f"panel_{name}.py"))
         if matches:
             sources[name] = matches[0]
     return sources
@@ -633,7 +638,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     from .render import preview
 
     layout = Layout.load(args.layout)
-    sources = panel_sources(layout)
+    sources = panel_sources(layout, getattr(args, "sources", None))
     wanted = args.panels or list(layout.panels)
     python = getattr(args, "python", None) or sys.executable
     problem = _environment_issue(python)
@@ -891,6 +896,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("layout")
     p.add_argument("panels", nargs="*", help="only these panels (default: all)")
     p.add_argument("--python", help="interpreter that runs the notebooks (default: this one)")
+    p.add_argument("--sources", help="folder holding the panel scripts (default: next to the layout)")
 
     p = add("export", cmd_export, "Write the final single-file figure (.pdf, .tif, .png).")
     p.add_argument("layout")

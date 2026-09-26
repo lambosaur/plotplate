@@ -344,13 +344,19 @@ def page_view(
     """
     import pymupdf
 
-    if paper not in PAPER_MM:
-        raise ValueError(f"unknown paper {paper!r}; use one of {list(PAPER_MM)}")
     out_dir = Path(out_dir) if out_dir is not None else layout.base_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    paper_w, paper_h = PAPER_MM[paper]
-    left = (paper_w - layout.width) / 2
-    top = 20.0
+    declared = layout.sheet_size()
+    if declared is not None:  # the layout's own `page:` section wins over the argument
+        paper_w, paper_h, _, text_height = declared
+        top = (paper_h - text_height) / 2
+        left = (paper_w - layout.width) / 2
+    else:
+        if paper not in PAPER_MM:
+            raise ValueError(f"unknown paper {paper!r}; use one of {list(PAPER_MM)}")
+        paper_w, paper_h = PAPER_MM[paper]
+        left = (paper_w - layout.width) / 2
+        top = 20.0
     if left < 5:
         raise ValueError(f"figure width {layout.width} mm does not fit on {paper} paper")
     figure = compose(layout)
