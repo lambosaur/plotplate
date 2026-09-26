@@ -593,11 +593,16 @@ def _row_slack(
     return rows
 
 
-def _place(
+def place_boxes(
     data: dict[str, Any], layout: Layout, boxes: dict[str, Rect], new_boxes: dict[str, Rect],
-    tolerance: float,
+    tolerance: float = 1.0,
 ) -> int:  # fmt: skip
     """Write the new boxes into ``data``, move the axes with them, and re-derive the guides.
+
+    ``data`` is a resolved layout (:meth:`Layout.resolved`), ``boxes`` the panel boxes it was
+    made from, and ``new_boxes`` where those panels should go: the optimizer and the viewer's
+    editor both end here, so a box moved by hand and a box moved by the solver are written the
+    same way.
 
     Returns how many guides were found again: shared axes edges that still coincide.
     """
@@ -812,7 +817,7 @@ def optimize(
     area["height"] = round(height, 2)
     guides = (
         len(layout.guides["x"]) + len(layout.guides["y"]),
-        _place(data, layout, boxes, arranged.boxes, tolerance),
+        place_boxes(data, layout, boxes, arranged.boxes, tolerance),
     )
     report = Report(
         width=width,

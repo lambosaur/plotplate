@@ -562,6 +562,7 @@ def _build_figure_demo(dest: Path, python: str) -> int:
     ):
         print(f"  {_rel(path)}")
     print(f"\nthen open all three layouts at once:\n  plotplate view {_rel(figure)}")
+    print(f"  plotplate view {_rel(figure)} --edit   # ... and move the boxes yourself")
     return status
 
 
@@ -740,6 +741,7 @@ def cmd_view(args: argparse.Namespace) -> int:
         port=args.port,
         open_browser=not args.no_browser,
         paper=None if args.paper in (None, "none") else args.paper,
+        editable=args.edit,
     )
     return 0
 
@@ -1071,6 +1073,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    p.add_argument(
+        "--edit",
+        action="store_true",
+        help="allow dragging the panels on the page and saving them as layout.<name>.yaml "
+        "(never layout.yaml itself)",
+    )
 
     p = add("check", cmd_check, "Check layout and saved panel files (sizes, reports).")
     p.add_argument("layout")

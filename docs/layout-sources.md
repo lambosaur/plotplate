@@ -163,6 +163,13 @@ Rename panels in the layout, or use `plotplate diff old.yaml new.yaml` to get a 
 `plotplate svg-export layout.yaml --background source.png` goes the other way: it writes an SVG with
 the source image on a locked layer, ready to correct in Inkscape.
 
+**Or move the boxes in the viewer.**
+For the common edit — a panel a few millimetres off, a gutter to even out — `plotplate view … --edit`
+drags the boxes on the page and saves them as `layout.<name>.yaml`
+([workflow.md](workflow.md#moving-boxes-on-the-page)), with no export and no import.
+The drawing program is for what a drag cannot say: tracing a scanned figure, placing a panel over an
+image, reshaping many boxes against a background.
+
 ## Choosing a source
 
 1. If you have the PDF your old figure was compiled into, use `plotplate from-pdf`.

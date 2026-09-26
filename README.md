@@ -234,7 +234,7 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 | `plotplate optimize` | give the white space between panels back to the panels, within a distortion limit |
 | `plotplate diff` | compare two layouts: moved, merged, split, added, removed, with a revision plan |
 | `plotplate validate` / `plotplate wireframe` / `plotplate align` / `plotplate features` | inspect a layout, check alignment, list measurable features |
-| `plotplate view` | local page showing the figure on its sheet, with the layout and every variant on top |
+| `plotplate view` | local page showing the figure on its sheet, with the layout and every variant on top (`--edit` to drag the boxes and save a variant) |
 | `plotplate build` | run panel notebooks, then preview, LaTeX and checks |
 | `plotplate preview` / `plotplate latex` / `plotplate check` | individual build steps |
 | `plotplate bundle` / `plotplate export` | deliver to Overleaf or to a journal |

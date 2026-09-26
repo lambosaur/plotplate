@@ -8,6 +8,7 @@ import pytest
 
 matplotlib.use("Agg")
 
+import plotplate as pp
 from plotplate.view import Viewer, make_server
 
 
@@ -109,3 +110,87 @@ def test_a_broken_layout_is_reported_instead_of_crashing(served):
     assert [v["key"] for v in state["variants"]] == ["base", "broken"]
     assert next(v for v in state["variants"] if v["key"] == "broken")["error"]
     assert json.loads(fetch(base + "state.json"))["panels"]  # the good one still works
+
+
+@pytest.fixture
+def editable(layout):
+    """The same viewer, started with --edit; yields (base url, layout)."""
+    server = make_server(layout.path, port=0, editable=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}/", layout
+    server.shutdown()
+    server.server_close()
+
+
+def post(url, payload, content_type="application/json"):
+    request = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), headers={"Content-Type": content_type}
+    )
+    return json.loads(urllib.request.urlopen(request, timeout=10).read())
+
+
+def test_edited_boxes_are_saved_as_a_new_variant(editable):
+    """Drag a panel on the page, save it: a variant appears, with the axes moved with it."""
+    base, layout = editable
+    answer = post(base + "save", {"variant": "custom", "panels": {"A": [0, 0, 100, 50]}})
+    assert answer["saved"] == "layout.custom.yaml"
+
+    saved = pp.Layout.load(layout.path.with_name("layout.custom.yaml"))
+    assert saved.panels["A"].box.to_list() == [0, 0, 100, 50]
+    assert saved.panels["B"].box == layout.panels["B"].box  # untouched panels stayed
+    roc = saved.panels["A"].axes["roc"].region
+    assert roc.left == pytest.approx(layout.panels["A"].axes["roc"].region.left, abs=0.01)
+    assert roc.w > layout.panels["A"].axes["roc"].region.w  # the plot took the extra width
+    assert "mosaic" not in saved.raw  # what is written is a resolved layout
+    assert json.loads(fetch(base + "state.json"))["editable"] is True
+
+
+def test_saving_never_touches_the_layout_you_maintain(editable):
+    base, layout = editable
+    before = layout.path.read_text()
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        post(base + "save", {"variant": "base", "panels": {"A": [0, 0, 60, 40]}})
+    assert caught.value.code == 400
+    assert "layout.yaml is the file you maintain" in caught.value.read().decode()
+    assert layout.path.read_text() == before
+
+
+def test_a_read_only_viewer_refuses_to_save(served):
+    base, layout = served
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        post(base + "save", {"variant": "custom", "panels": {"A": [0, 0, 60, 40]}})
+    assert caught.value.code == 400 and "read-only" in caught.value.read().decode()
+    assert not layout.path.with_name("layout.custom.yaml").exists()
+    assert json.loads(fetch(base + "state.json"))["editable"] is False
+
+
+@pytest.mark.parametrize(
+    ("payload", "says"),
+    [
+        ({"variant": "../escape", "panels": {}}, "not a variant name"),
+        ({"variant": "custom", "panels": {"Z": [0, 0, 10, 10]}}, "not a panel"),
+        ({"variant": "custom", "panels": {"A": [0, 0, 0.2, 40]}}, "1 x 1 mm"),
+        ({"variant": "custom", "panels": {"A": ["a", 0, 10, 10]}}, "four numbers"),
+    ],
+)
+def test_a_save_that_makes_no_sense_is_refused(editable, payload, says):
+    base, layout = editable
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        post(base + "save", payload)
+    assert says in caught.value.read().decode()
+    assert not layout.path.with_name("layout.custom.yaml").exists()
+
+
+def test_a_save_from_another_site_or_a_form_is_refused(editable):
+    """A page on another origin can reach localhost; it cannot write through this route."""
+    base, layout = editable
+    for headers in ({"Origin": "https://evil.example"}, {}):
+        request = urllib.request.Request(
+            base + "save",
+            data=b"variant=custom",
+            headers={"Content-Type": "application/x-www-form-urlencoded", **headers},
+        )
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=10)
+        assert caught.value.code in (403, 415)
+    assert not layout.path.with_name("layout.custom.yaml").exists()

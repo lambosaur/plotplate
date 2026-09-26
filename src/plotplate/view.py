@@ -10,16 +10,27 @@
   is active and drawn in full, the others can be laid over it as outlines, which is how you
   see what an optimization did.
 
+With ``--edit``, panel boxes can also be dragged and resized on the page, and saved as
+another variant (``layout.custom.yaml``). Two rules make that safe to offer:
+
+- the server only ever writes ``layout.<name>.yaml`` next to the figure, and never
+  ``layout.yaml`` itself -- the file you maintain keeps its comments, its ``mosaic:`` and its
+  journal widths, none of which survive being written back as numbers;
+- what is saved is a resolved layout, the same thing ``plotplate optimize`` writes, through
+  the same function, so a box moved by hand and a box moved by the solver land identically.
+
+Anything a drag cannot express -- adding a panel, drawing an annotation -- still belongs in
+the layout file or in a drawing program (``plotplate svg-export`` / ``svg-import``).
+
 Files are re-read on every request, so a rebuild in another terminal shows up without
-restarting anything. The page is read-only on purpose: boxes are edited in the layout file,
-by ``plotplate optimize``, or through the Inkscape round trip (``plotplate svg-export`` /
-``svg-import``). Only the Python standard library is used, so no server framework is
+restarting anything. Only the Python standard library is used, so no server framework is
 involved.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,8 +38,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .geometry import Rect
 from .layout import Layout
-from .variants import BASE, find_layouts
+from .variants import BASE, find_layouts, variant_path
+
+#: What a variant may be called when the page saves one: a file name, not a path.
+VARIANT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}")
 
 PAGE = """<!doctype html>
 <meta charset="utf-8">
@@ -54,6 +69,11 @@ PAGE = """<!doctype html>
  #zoom { display: flex; gap: 4px; align-items: center; }
  button { font: inherit; padding: 1px 7px; }
  footer { margin-top: 18px; opacity: .6; font-size: 11px; }
+ #edit input[type=number] { width: 58px; font: inherit; }
+ #edit .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+ #name { width: 82px; font: inherit; }
+ .dirty { color: #b45309; }
+ #paper.editing { cursor: default; }
 </style>
 <div id="side">
   <h1>__TITLE__</h1>
@@ -74,11 +94,31 @@ PAGE = """<!doctype html>
     <button id="z-one">1:1</button><button id="z-in">+</button>
     <span class="mm" id="z-level"></span>
   </div>
+  <div id="edit" hidden>
+    <h2>Edit</h2>
+    <div class="mm" id="picked">drag a panel to move it, its corners to resize it</div>
+    <div class="row">
+      <label>x <input type="number" id="f-x" step="0.5"></label>
+      <label>y <input type="number" id="f-y" step="0.5"></label>
+    </div>
+    <div class="row">
+      <label>w <input type="number" id="f-w" step="0.5"></label>
+      <label>h <input type="number" id="f-h" step="0.5"></label>
+    </div>
+    <div class="row">
+      <span class="mm">layout.</span><input id="name" value="custom"><span class="mm">.yaml</span>
+    </div>
+    <div class="row">
+      <button id="save">save</button><button id="revert">revert</button>
+      <span class="mm" id="saved"></span>
+    </div>
+  </div>
   <h2>Panels</h2>
   <ul id="panels"></ul>
   <h2>Checks</h2>
   <div id="issues"></div>
-  <footer>read-only: edit the layout, run plotplate optimize, or use svg-export / svg-import</footer>
+  <footer id="foot">read-only: edit the layout, run plotplate optimize, or use svg-export /
+    svg-import</footer>
 </div>
 <div id="stage"><svg id="paper" xmlns="http://www.w3.org/2000/svg"></svg></div>
 <script>
@@ -86,8 +126,14 @@ const SV = "http://www.w3.org/2000/svg";
 const COLORS = ["#7c3aed", "#0891b2", "#be185d", "#4d7c0f", "#b45309"];
 let stamp = null, state = null, active = null, compare = new Set(), hover = null;
 let ppm = null;  // pixels per millimetre; null = fit the stage
+let draft = {}, picked = null, drag = null;  // editing: boxes moved but not saved yet
+let originMM = [0, 0], viewMM = [210, 297];  // what draw() last put in the viewBox
+const SNAP = 1.5;  // mm: how close an edge has to be to another one to stick to it
 const el = id => document.getElementById(id);
 const on = id => el(id).checked;
+const editing = () => !!(state && state.editable && !state.error);
+const dirty = () => Object.keys(draft).length > 0;
+const boxOf = p => draft[p.name] || p.box;
 
 function node(parent, tag, attrs, text) {
   const made = document.createElementNS(SV, tag);
@@ -100,6 +146,33 @@ function node(parent, tag, attrs, text) {
 function box(parent, rect, attrs) {
   return node(parent, "rect", Object.assign(
     {x: rect[0], y: rect[1], width: rect[2], height: rect[3]}, attrs));
+}
+
+function mapValue(v, old, now) {
+  if (old[1] - old[0] < 1e-6) return now[0] + (v - old[0]);
+  return now[0] + (v - old[0]) * (now[1] - now[0]) / (old[1] - old[0]);
+}
+
+// The JavaScript twin of plotplate.pack._map_axes: the margins that hold tick labels keep
+// their millimetres, everything between them stretches. Only for drawing; the server writes
+// the real numbers with the Python one.
+function mapAxes(from, to, rects) {
+  const band = i => {
+    const lo = Math.min(...rects.map(r => r[i])), hi = Math.max(...rects.map(r => r[i] + r[i + 2]));
+    const before = lo - from[i], after = from[i] + from[i + 2] - hi;
+    let target = [to[i] + before, to[i] + to[i + 2] - after];
+    if (target[1] - target[0] < 2)
+      target = [mapValue(lo, [from[i], from[i] + from[i + 2]], [to[i], to[i] + to[i + 2]]),
+                mapValue(hi, [from[i], from[i] + from[i + 2]], [to[i], to[i] + to[i + 2]])];
+    return [[lo, hi], target];
+  };
+  if (!rects.length) return [];
+  const bx = band(0), by = band(1);
+  return rects.map(r => {
+    const x0 = mapValue(r[0], bx[0], bx[1]), x1 = mapValue(r[0] + r[2], bx[0], bx[1]);
+    const y0 = mapValue(r[1], by[0], by[1]), y1 = mapValue(r[1] + r[3], by[0], by[1]);
+    return [x0, y0, x1 - x0, y1 - y0];
+  });
 }
 
 function drawSheet(svg, sheet) {
@@ -130,18 +203,26 @@ function drawLayout(layer, data) {
                            "stroke-width": .3, "stroke-dasharray": "2 2"});
   }
   for (const p of data.panels) {
+    const rect = boxOf(p);
+    const lit = p.name === hover || p.name === picked;
     if (on("t-panels")) {
-      box(layer, p.box, {fill: "#3b82f6", "fill-opacity": p.name === hover ? .22 : .07,
-                         stroke: "#1d4ed8", "stroke-width": p.name === hover ? 1 : .4});
+      box(layer, rect, {fill: "#3b82f6", "fill-opacity": lit ? .22 : .07,
+                        stroke: "#1d4ed8", "stroke-width": lit ? 1 : .4,
+                        "data-panel": p.name});
       if (p.label)
-        node(layer, "text", {x: p.box[0] + 1.5, y: p.box[1] + 5, "font-size": 4,
+        node(layer, "text", {x: rect[0] + 1.5, y: rect[1] + 5, "font-size": 4,
                              fill: "#1d4ed8", "font-weight": "bold"}, p.label);
     }
-    if (on("t-axes"))
-      for (const a of p.axes)
-        box(layer, a.box, {fill: "none", stroke: "#d97706", "stroke-width": .3,
-                           "stroke-dasharray": "1.5 1.5"});
+    if (on("t-axes")) {
+      const rects = draft[p.name]
+        ? mapAxes(p.box, rect, p.axes.map(a => a.box)) : p.axes.map(a => a.box);
+      for (const a of rects)
+        box(layer, a, {fill: "none", stroke: "#d97706", "stroke-width": .3,
+                       "stroke-dasharray": "1.5 1.5"});
+    }
   }
+  if (editing() && picked && data.panels.some(p => p.name === picked))
+    drawHandles(layer, boxOf(data.panels.find(p => p.name === picked)));
   if (on("t-measured"))
     for (const f of data.features) {
       if (f.kind === "mark") node(layer, "circle", {cx: f.x, cy: f.y, r: .8, fill: "#16a34a"});
@@ -156,6 +237,92 @@ function drawLayout(layer, data) {
                            y2: vertical ? data.height : r.value,
                            stroke: "#dc2626", "stroke-width": .35, "stroke-dasharray": "3 2"});
     }
+}
+
+function drawHandles(layer, rect) {
+  const size = Math.max(1.6, 4 / (ppm === null ? 3 : ppm / 3.78) / 2);
+  for (const [cx, cy] of corners(rect))
+    box(layer, [cx - size / 2, cy - size / 2, size, size],
+        {fill: "#fff", stroke: "#1d4ed8", "stroke-width": .35});
+}
+
+const corners = r => [[r[0], r[1]], [r[0] + r[2], r[1]], [r[0], r[1] + r[3]],
+                      [r[0] + r[2], r[1] + r[3]]];
+
+function atEvent(ev) {  // page pixels -> layout millimetres
+  const r = el("paper").getBoundingClientRect();
+  return [(ev.clientX - r.left) * viewMM[0] / r.width - originMM[0],
+          (ev.clientY - r.top) * viewMM[1] / r.height - originMM[1]];
+}
+
+// What the pointer grabbed: a corner of the selected panel, or the smallest panel under it
+// (so an inset wins over the panel it sits in).
+function grab(at) {
+  const near = 4 * viewMM[0] / el("paper").getBoundingClientRect().width;
+  const chosen = state.panels.find(p => p.name === picked);
+  if (chosen) {
+    const rect = boxOf(chosen);
+    const hit = corners(rect).findIndex(
+      c => Math.abs(c[0] - at[0]) < near && Math.abs(c[1] - at[1]) < near);
+    if (hit >= 0) return {name: picked, mode: "resize", corner: hit, rect, at};
+  }
+  const inside = state.panels.filter(p => {
+    const r = boxOf(p);
+    return at[0] >= r[0] && at[0] <= r[0] + r[2] && at[1] >= r[1] && at[1] <= r[1] + r[3];
+  }).sort((a, b) => boxOf(a)[2] * boxOf(a)[3] - boxOf(b)[2] * boxOf(b)[3]);
+  if (!inside.length) return null;
+  return {name: inside[0].name, mode: "move", rect: boxOf(inside[0]), at};
+}
+
+// Every edge a dragged edge may stick to: the other panels, the figure, and the guides.
+function magnets() {
+  const xs = [0, state.width], ys = [0, state.height];
+  for (const p of state.panels) {
+    if (p.name === (drag && drag.name)) continue;
+    const r = boxOf(p);
+    xs.push(r[0], r[0] + r[2]);
+    ys.push(r[1], r[1] + r[3]);
+  }
+  xs.push(...Object.values(state.guides.x));
+  ys.push(...Object.values(state.guides.y));
+  return [xs, ys];
+}
+
+function snap(value, others, free) {
+  if (free) return {value, shift: 0};
+  let best = {value, shift: 0, gap: SNAP};
+  for (const other of others)
+    if (Math.abs(other - value) < best.gap) best = {value: other, shift: other - value,
+                                                    gap: Math.abs(other - value)};
+  return best;
+}
+
+function moved(at, free) {
+  const [xs, ys] = magnets();
+  const dx = at[0] - drag.at[0], dy = at[1] - drag.at[1];
+  const r = drag.rect;
+  if (drag.mode === "move") {
+    let x = r[0] + dx, y = r[1] + dy;
+    const sx = [snap(x, xs, free), snap(x + r[2], xs, free)]
+      .sort((a, b) => Math.abs(a.shift) - Math.abs(b.shift))[0];
+    const sy = [snap(y, ys, free), snap(y + r[3], ys, free)]
+      .sort((a, b) => Math.abs(a.shift) - Math.abs(b.shift))[0];
+    return [x + sx.shift, y + sy.shift, r[2], r[3]];
+  }
+  const right = drag.corner === 1 || drag.corner === 3, low = drag.corner >= 2;
+  let x0 = r[0], y0 = r[1], x1 = r[0] + r[2], y1 = r[1] + r[3];
+  if (right) x1 = snap(x1 + dx, xs, free).value; else x0 = snap(x0 + dx, xs, free).value;
+  if (low) y1 = snap(y1 + dy, ys, free).value; else y0 = snap(y0 + dy, ys, free).value;
+  return [Math.min(x0, x1 - 1), Math.min(y0, y1 - 1),
+          Math.max(1, x1 - x0), Math.max(1, y1 - y0)];
+}
+
+const round2 = r => r.map(v => Math.round(v * 100) / 100);
+
+function edit(name, rect) {
+  draft[name] = round2(rect);
+  renderEdit();
+  draw();
 }
 
 function drawCompared(layer) {
@@ -179,6 +346,9 @@ function draw() {
   const sheet = on("t-sheet") ? state.sheet : null;
   const view = sheet ? sheet.size : [state.width, state.height];
   const origin = sheet ? [sheet.area[0], sheet.area[1]] : [0, 0];
+  viewMM = view;
+  originMM = origin;
+  svg.classList.toggle("editing", editing());
   svg.setAttribute("viewBox", `0 0 ${view[0]} ${view[1]}`);
   const fit = Math.min(1, (el("stage").clientWidth - 56) / view[0] / 3.78);
   const scale = ppm === null ? fit : ppm / 3.78;
@@ -195,6 +365,25 @@ function draw() {
       {fill: "none", stroke: "#1d4ed855", "stroke-width": .3});
   drawLayout(layer, state);
   drawCompared(layer);
+}
+
+function renderEdit() {
+  el("edit").hidden = !editing();
+  if (!editing()) return;
+  el("foot").textContent = "editing: drag or nudge with the arrow keys, hold shift to ignore "
+    + "the magnets. Saving writes layout.<name>.yaml, never layout.yaml";
+  const panel = state.panels.find(p => p.name === picked);
+  const rect = panel ? boxOf(panel) : null;
+  el("picked").innerHTML = panel
+    ? `<b>${panel.label || panel.name}</b> ${draft[panel.name] ? "moved" : "unchanged"}`
+    : "drag a panel to move it, its corners to resize it";
+  for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries()) {
+    el(key).disabled = !rect;
+    el(key).value = rect ? rect[i] : "";
+  }
+  const count = Object.keys(draft).length;
+  el("saved").className = "mm" + (count ? " dirty" : "");
+  if (count) el("saved").textContent = `${count} panel${count > 1 ? "s" : ""} moved, not saved`;
 }
 
 function renderVariants() {
@@ -216,7 +405,12 @@ function renderVariants() {
     holder.appendChild(row);
   });
   for (const input of holder.querySelectorAll("input[name=active]"))
-    input.addEventListener("change", () => { active = input.value; refresh(true); });
+    input.addEventListener("change", () => {
+      active = input.value;
+      draft = {};
+      picked = null;
+      refresh(true);
+    });
   for (const input of holder.querySelectorAll("input[data-compare]"))
     input.addEventListener("change", () => {
       const key = input.dataset.compare;
@@ -237,6 +431,7 @@ function showError(message) {
 
 function render() {
   renderVariants();
+  renderEdit();
   if (state.error) return showError(state.error);
   el("size").textContent = `${state.width} x ${state.height} mm`
     + (state.sheet ? ` on ${state.sheet.paper.toUpperCase()}` : "");
@@ -260,7 +455,34 @@ function render() {
   draw();
 }
 
+async function save() {
+  const name = el("name").value.trim();
+  el("saved").className = "mm";
+  el("saved").textContent = "saving...";
+  try {
+    const answer = await fetch("save", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({layout: active, variant: name, panels: draft}),
+    });
+    const result = await answer.json();
+    if (result.error) {
+      el("saved").className = "mm dirty";
+      el("saved").textContent = result.error;
+      return;
+    }
+    draft = {};
+    picked = null;
+    active = result.variant;
+    await refresh(true);
+    el("saved").textContent = "wrote " + result.saved;
+  } catch (err) {
+    el("saved").className = "mm dirty";
+    el("saved").textContent = "could not save: " + err;
+  }
+}
+
 async function refresh(force) {
+  if (!force && dirty()) return;  // do not overwrite edits that are not saved yet
   try {
     const url = "state.json" + (active ? `?layout=${active}` : "");
     const fresh = await (await fetch(url)).json();
@@ -279,6 +501,44 @@ async function poll() {  // one chain only: refresh() never schedules anything
 }
 for (const input of document.querySelectorAll("#side > label input"))
   input.addEventListener("change", () => state && draw());
+
+el("paper").addEventListener("pointerdown", ev => {
+  if (!editing()) return;
+  const at = atEvent(ev);
+  const got = grab(at);
+  picked = got ? got.name : null;
+  drag = got;
+  if (got) el("paper").setPointerCapture(ev.pointerId);
+  renderEdit();
+  draw();
+});
+el("paper").addEventListener("pointermove", ev => {
+  if (!drag) return;
+  ev.preventDefault();
+  edit(drag.name, moved(atEvent(ev), ev.shiftKey));  // shift: ignore the magnets
+});
+el("paper").addEventListener("pointerup", ev => {
+  if (drag) el("paper").releasePointerCapture(ev.pointerId);
+  drag = null;
+});
+document.addEventListener("keydown", ev => {
+  if (!editing() || !picked || ev.target.tagName === "INPUT") return;
+  const step = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[ev.key];
+  if (!step) return;
+  ev.preventDefault();
+  const by = ev.shiftKey ? 2 : 0.5;
+  const rect = boxOf(state.panels.find(p => p.name === picked));
+  edit(picked, [rect[0] + step[0] * by, rect[1] + step[1] * by, rect[2], rect[3]]);
+});
+for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries())
+  el(key).addEventListener("change", () => {
+    if (!picked) return;
+    const rect = boxOf(state.panels.find(p => p.name === picked)).slice();
+    rect[i] = parseFloat(el(key).value);
+    if (!isNaN(rect[i])) edit(picked, rect);
+  });
+el("save").onclick = save;
+el("revert").onclick = () => { draft = {}; el("saved").textContent = ""; renderEdit(); draw(); };
 el("z-in").onclick = () => { ppm = (ppm || 3.78) * 1.25; draw(); };
 el("z-out").onclick = () => { ppm = (ppm || 3.78) / 1.25; draw(); };
 el("z-one").onclick = () => { ppm = 3.78; draw(); };
@@ -289,6 +549,19 @@ poll();
 """
 
 
+def _checked_rect(name: str, value: Any) -> Rect:
+    """One ``[x, y, w, h]`` from the page, refused unless it is a usable box in millimetres."""
+    try:
+        x, y, w, h = (float(v) for v in value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name}: not a box of four numbers: {value!r}") from exc
+    if not all(abs(v) < 1e4 for v in (x, y, w, h)):
+        raise ValueError(f"{name}: {value!r} is not a box in millimetres")
+    if w < 1.0 or h < 1.0:
+        raise ValueError(f"{name}: a panel smaller than 1 x 1 mm is a mistake, not a layout")
+    return Rect(round(x, 2), round(y, 2), round(w, 2), round(h, 2))
+
+
 @dataclass
 class Viewer:
     """Reads the layouts and the panel files on demand, so a rebuild is picked up.
@@ -296,10 +569,12 @@ class Viewer:
     Args:
         target: a layout file, or the figure folder holding ``layout.yaml``.
         paper: sheet to show when a layout declares no ``page:`` section.
+        editable: allow the page to save a variant (``plotplate view --edit``).
     """
 
     target: Path
     paper: str | None = "a4"
+    editable: bool = False
 
     def variants(self) -> dict[str, Path]:
         """Every layout variant of this figure, keyed by variant name."""
@@ -355,6 +630,7 @@ class Viewer:
         common = {
             "stamp": self.stamp(),
             "active": active,
+            "editable": self.editable,
             "variants": [self._summary(name, path) for name, path in variants.items()],
         }
         try:
@@ -410,6 +686,50 @@ class Viewer:
             "issues": [{"level": issue.level, "text": str(issue)} for issue in issues],
         }
 
+    def save(self, key: str | None, variant: str, boxes: dict[str, Any]) -> Path:
+        """Write the boxes edited on the page as ``layout.<variant>.yaml``.
+
+        The result is a resolved layout written by :func:`plotplate.pack.place_boxes`, so the
+        axes keep the millimetres that hold their tick labels and the guides are re-derived
+        from the edges that still coincide.
+
+        Args:
+            key: the variant that was edited, which the saved one is based on.
+            variant: the name to save under, which becomes ``layout.<variant>.yaml``.
+            boxes: the panels that moved, each as ``[x, y, w, h]`` in layout millimetres.
+
+        Returns:
+            The file that was written.
+
+        Raises:
+            PermissionError: the viewer was not started with ``--edit``.
+            ValueError: the name, or one of the boxes, cannot be used.
+        """
+        from .config import dump_yaml
+        from .pack import place_boxes
+
+        if not self.editable:
+            raise PermissionError("this viewer is read-only; start it with `plotplate view --edit`")
+        if not VARIANT_NAME.fullmatch(variant):
+            raise ValueError(f"{variant!r} is not a variant name (letters, digits, - and _)")
+        if variant == BASE:
+            raise ValueError(
+                "layout.yaml is the file you maintain: its comments, mosaic and journal widths "
+                "would be replaced by numbers. Save under another name, and copy it over yourself"
+            )
+        layout = self.layout(key)
+        old = {name: spec.box for name, spec in layout.panels.items()}
+        new = dict(old)
+        for name, value in boxes.items():
+            if name not in old:
+                raise ValueError(f"{name!r} is not a panel of this layout")
+            new[name] = _checked_rect(name, value)
+        data = layout.resolved()
+        place_boxes(data, layout, old, new)
+        path = variant_path(self.path(key), variant)
+        dump_yaml(data, path)
+        return path
+
     def figure_png(self, key: str | None = None, dpi: int = 160) -> bytes:
         """The composed figure as PNG bytes, without writing any file."""
         from .render import compose
@@ -421,7 +741,7 @@ class Viewer:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    """Three routes: the page, its state, and the rendered figure."""
+    """Three routes to read (the page, its state, the figure) and one to save a variant."""
 
     viewer: Viewer
 
@@ -444,6 +764,39 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 - a broken layout must not kill the server
             self._send(json.dumps({"error": str(exc)}).encode(), "application/json", 500)
 
+    def do_POST(self) -> None:
+        """Save the edited boxes as a variant. Only ``/save``, and only with ``--edit``."""
+        if urlparse(self.path).path.lstrip("/") != "save":
+            self.send_error(404)
+            return
+        # A page on another site can POST to localhost, but not with this content type and not
+        # from another origin: both are checked before anything is written.
+        origin = self.headers.get("Origin")
+        if origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost", "::1"):
+            self.send_error(403, "refused: this write came from another site")
+            return
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            self.send_error(415, "send application/json")
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 1_000_000:
+            self.send_error(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            saved = self.viewer.save(
+                payload.get("layout"),
+                str(payload.get("variant") or "custom"),
+                dict(payload.get("panels") or {}),
+            )
+        except Exception as exc:  # noqa: BLE001 - the page shows the reason and stays open
+            self._send(json.dumps({"error": str(exc)}).encode(), "application/json", 400)
+            return
+        self._send(
+            json.dumps({"saved": saved.name, "variant": payload.get("variant") or "custom"}).encode(),
+            "application/json",
+        )
+
     def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -457,12 +810,16 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def make_server(
-    path: str | Path, host: str = "127.0.0.1", port: int = 8765, paper: str | None = "a4"
+    path: str | Path,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    paper: str | None = "a4",
+    editable: bool = False,
 ) -> ThreadingHTTPServer:
     """An HTTP server showing the figure at ``path`` (call ``serve_forever`` on it)."""
 
     class Handler(_Handler):
-        viewer = Viewer(Path(path).resolve(), paper)
+        viewer = Viewer(Path(path).resolve(), paper, editable)
 
     return ThreadingHTTPServer((host, port), Handler)
 
@@ -473,13 +830,16 @@ def serve(
     port: int = 8765,
     open_browser: bool = True,
     paper: str | None = "a4",
+    editable: bool = False,
 ) -> None:
     """Serve the viewer until interrupted."""
-    server = make_server(path, host, port, paper)
+    server = make_server(path, host, port, paper, editable)
     url = f"http://{host}:{server.server_port}/"
     viewer: Viewer = server.RequestHandlerClass.viewer  # type: ignore[attr-defined]
     print(f"plotplate view on {url}  (Ctrl-C to stop)")
     print(f"  layouts: {', '.join(viewer.variants())}")
+    if editable:
+        print("  editing on: drag the panels, then save them as layout.<name>.yaml")
     if open_browser:
         webbrowser.open(url)
     try:

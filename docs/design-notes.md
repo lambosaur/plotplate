@@ -36,6 +36,7 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 | The optimizer's limit is a distortion factor, and what the limit costs is reported. | How much a panel may grow changes how the figure reads, so the tool states the trade-off (`--max-stretch 1.48 would fill it`) rather than choosing it. |
 | An explicitly requested size is an error when unreachable; the current size bends. | A number the user typed is a promise; the default is only a default. |
 | All files are tracked on every branch (`main`, `dev`, features). | Git cannot keep per-branch file sets maintainably, and installations never include development files. |
+| The viewer can move boxes (`--edit`), but only saves `layout.<name>.yaml`. | Nudging a box is the commonest edit there is, and a round trip through a drawing program costs more than the edit. Writing back the maintained `layout.yaml` would replace its comments, `mosaic:` and journal widths with numbers, so the page saves a variant and the author copies it over. |
 | Inkscape SVG import only updates boxes. | Drawing tools are good for geometry. Style, guides and grid settings stay in YAML. |
 | Text is kept as text (PDF Type 42, SVG `fonttype: none`). | Journals require editable, embedded fonts. |
 | Journal presets record sources and a `verified` note. | Guidelines change, and several pages could not be fetched directly. |
@@ -114,7 +115,8 @@ decision.
 - `plotplate from-pdf` records clipped `\includegraphics` (trim, clip) at their unclipped size.
 - Illustrator and Inkscape PDF exports were not tested (no licence or package available here);
   [layout-sources.md](layout-sources.md) states the expected behaviour.
-- No interactive editor: correct boxes in Inkscape through `svg-export`/`svg-import`.
+- The page's editing is panel boxes only: no axes, no guides, no undo beyond *revert*, and no
+  editing of a layout the server did not read (it always saves a full variant).
 - `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the
   user) decides how drawing code moves.
 - Panel letters in the LaTeX output use the document font; set `\plotplatePanelLabel` to Arial (for

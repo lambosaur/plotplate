@@ -238,9 +238,29 @@ A local page shows the composed figure on the sheet it is meant for, with the la
 It re-reads the files on every request, so a `plotplate build` in another terminal appears within a
 second, which makes it a good second screen while editing panel code.
 
-It is read-only: edit `layout.yaml`, run `plotplate optimize`, or move boxes through
-`plotplate svg-export` / `svg-import`.
 It binds to 127.0.0.1 and uses only the Python standard library.
+
+### Moving boxes on the page
+
+```sh
+plotplate view figures/figure_1 --edit
+```
+
+Without `--edit` the page is read-only. With it, panel boxes can be moved and resized:
+
+- drag a panel to move it, drag a corner to resize it; edges stick to the other panels, to the figure
+  and to the guides when they come within 1.5 mm, and holding **shift** ignores that;
+- the arrow keys nudge the selected panel by 0.5 mm (2 mm with shift), and the four number fields set
+  its box exactly;
+- axes follow their panel the same way `plotplate optimize` moves them: the margins that hold tick
+  labels keep their millimetres, and the plotting area takes the rest;
+- **save** writes `layout.<name>.yaml` — a resolved layout, the same thing `optimize` writes.
+
+`layout.yaml` is never written: its comments, its `mosaic:` and its journal widths do not survive
+being written back as numbers, so what you drag is saved beside it and you copy it over when you are
+happy with it. Anything a drag cannot express — adding a panel, drawing an annotation, reshaping a
+figure by hand — belongs in the layout file or in Inkscape through
+[`svg-export` / `svg-import`](layout-sources.md#from-a-drawing).
 
 ### Does it line up?
 

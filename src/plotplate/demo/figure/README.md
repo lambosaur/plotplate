@@ -61,7 +61,8 @@ plotplate view figures/figure_1
 ```
 
 One page showing the figure on A4, with the layout over it, and the three layouts of this figure
-(`base`, `detected`, `optimized`) to switch between and overlay. The panels were drawn for `base`, so
+(`base`, `detected`, `optimized`) to switch between and overlay.
+Add `--edit` to drag the boxes around and save the result as `layout.<name>.yaml`. The panels were drawn for `base`, so
 the other two report `panel-size` — that check is the point: a panel drawn at the wrong size is exactly
 what plotplate exists to prevent. Rebuild against a layout to adopt it.
 
