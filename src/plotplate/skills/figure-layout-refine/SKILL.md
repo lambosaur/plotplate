@@ -15,9 +15,10 @@ The deterministic tools (`tidy`, `fill-gap`, `merge`, `--width`) fix geometry; t
    Read the wireframe over the source (`--wireframe`).
    Merge segments belonging to one panel (`plotplate merge draft.yaml S02 S03 --as A`), and rename panels to stable keys when the user wants ids rather than letters (`labels: auto` in the layout).
 
-1. **Set the page.**
-   `journal:` and `page.width` (a journal width name), then `page.height` from the content, respecting the journal maximum (`plotplate validate` warns).
-   Use `plotplate from-pdf --width` or `plotplate tidy --fill-gap` to rescale and to regularize the gutters.
+1. **Set the sheet and the figure size.**
+   `journal:` and `area.width` (a journal width name), then `area.height` from the content, respecting the journal maximum (`plotplate validate` warns).
+   `page:` describes the sheet (`paper`, `margins`, `caption`), and is what lets `plotplate validate` check that the figure fits the text block.
+   Use `plotplate from-pdf --width` to rescale, and `plotplate optimize --gap 4` to regularize the gutters and give the recovered space to the panels (`docs/optimize.md`).
 
 1. **Propose alignment guides.**
    Look at the source figure: panels in the same row usually share a baseline, and panels in a column share a left edge.

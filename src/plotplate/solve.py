@@ -10,7 +10,7 @@ no dependency. Constraints are linear, and each can be `required` (default) or a
 preference (`strong`, `medium`, `weak`) that bends when it conflicts.
 
 ```yaml
-page: {width: double, height: solve}   # height can be solved from the constraints
+area: {width: double, height: solve}   # height can be solved from the constraints
 constraints:
   defaults: {gap: 4}
   rules:

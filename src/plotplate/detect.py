@@ -178,7 +178,7 @@ def draft_layout(
     return {
         "schema": 1,
         "name": name,
-        "page": {"width": round(width, 2), "height": round(height, 2)},
+        "area": {"width": round(width, 2), "height": round(height, 2)},
         "panels": {
             f"S{i + 1:02d}": {"box": seg.box.to_list(1), "label": False}
             for i, seg in enumerate(segments)

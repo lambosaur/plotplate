@@ -90,7 +90,8 @@ board = fit_marsilea(build, panel, main="heatmap")
 panel.save(board.figure)
 ```
 
-`fig1/variants/panel_B_marsilea.py` in the demo (`plotplate demo <folder>`) draws panel b this way.
+`figures/figure_1/variants/panel_B_marsilea.py` in the demo (`plotplate demo figure`) draws panel b
+this way.
 
 Findings from the evaluation:
 

@@ -13,6 +13,7 @@ import copy
 from typing import Any
 
 from .geometry import Rect
+from .layout import area_section, split_area_page
 
 
 def _clusters(values: list[float], tolerance: float, step: float) -> dict[float, float]:
@@ -55,6 +56,17 @@ def _boxes(data: dict[str, Any]) -> list[tuple[dict[str, Any], str]]:
     return found
 
 
+def _axes_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every axes mapping of a layout, whatever shape it has."""
+    return [
+        axes
+        for panel in (data.get("panels") or {}).values()
+        if isinstance(panel, dict)
+        for axes in (panel.get("axes") or {}).values()
+        if isinstance(axes, dict)
+    ]
+
+
 def tidy(data: dict[str, Any], tolerance: float = 1.0, step: float = 0.5) -> dict[str, Any]:
     """Return a copy of the layout mapping with aligned, snapped boxes.
 
@@ -68,8 +80,8 @@ def tidy(data: dict[str, Any], tolerance: float = 1.0, step: float = 0.5) -> dic
     rects = [Rect.from_list(holder[key]) for holder, key in holders]
     xs = [v for r in rects for v in (r.left, r.right)]
     ys = [v for r in rects for v in (r.top, r.bottom)]
-    page = data.get("page") or {}
-    for bound, values in ((page.get("width"), xs), (page.get("height"), ys)):
+    area, _ = split_area_page(data)
+    for bound, values in ((area.get("width"), xs), (area.get("height"), ys)):
         if isinstance(bound, int | float):
             values.extend([0.0, float(bound)])
     xmap, ymap = _clusters(xs, tolerance, step), _clusters(ys, tolerance, step)
@@ -112,8 +124,8 @@ def fill_gaps(data: dict[str, Any], gap: float) -> dict[str, Any]:
     facing panel (overlapping in the other direction), minus half the gap.
     """
     data = copy.deepcopy(data)
-    page = data.get("page") or {}
-    width, height = float(page["width"]), float(page["height"])
+    area, _ = split_area_page(data)
+    width, height = float(area["width"]), float(area["height"])
     panels = {k: v for k, v in (data.get("panels") or {}).items() if (v or {}).get("box") is not None}
     rects = {k: Rect.from_list(v["box"]) for k, v in panels.items()}
 
@@ -153,12 +165,18 @@ def scale_layout(data: dict[str, Any], width: float) -> dict[str, Any]:
     Label offsets and guides scale too; font sizes do not (they are set by the style).
     """
     data = copy.deepcopy(data)
-    page = data["page"]
-    factor = width / float(page["width"])
-    page["width"] = round(width, 2)
-    page["height"] = round(float(page["height"]) * factor, 2)
+    area = area_section(data)
+    factor = width / float(area["width"])
+    area["width"] = round(width, 2)
+    area["height"] = round(float(area["height"]) * factor, 2)
     for holder, key in _boxes(data):
         holder[key] = [round(float(v) * factor, 2) for v in holder[key]]
+    # Axes written as edges keep numbers in page millimetres, and the gaps of an axes grid are
+    # millimetres too; a guide reference (a string) is left alone, since the guide itself scales.
+    for axes in _axes_entries(data):
+        for key in ("left", "top", "right", "bottom", "wgap", "hgap"):
+            if isinstance(axes.get(key), int | float):
+                axes[key] = round(float(axes[key]) * factor, 2)
     for panel in (data.get("panels") or {}).values():
         label = (panel or {}).get("label")
         if isinstance(label, dict) and label.get("offset") is not None:

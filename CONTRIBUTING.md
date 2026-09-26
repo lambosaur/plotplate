@@ -33,8 +33,7 @@ make format      # ruff format, mdformat, taplo
 make typecheck   # mypy
 make test        # pytest on the locked environment (includes a LaTeX compile test when tectonic is available)
 pixi run -e dev tox            # the same suite on every Python you have installed (3.12-3.14)
-pixi run -e dev demo           # full demo build in examples/demo/ (git-ignored)
-pixi run -e dev hard-case      # awkward-layout PDF and its import, in examples/hard-layout/
+pixi run -e dev demo           # full walkthrough in examples/figure-walkthrough/ (git-ignored)
 pixi run -e dev docs-figures   # regenerate docs/images/ from a fresh demo build
 ```
 
@@ -43,7 +42,7 @@ This is where most iteration should happen.
 See project-meta-seed/docs/tooling.md for the full local CI story (`actionlint`, `act`).
 
 After any change to drawing, checks, preview, LaTeX or export, run the demo and look at
-`examples/demo/fig1/preview.png`.
+`examples/figure-walkthrough/figures/figure_1/preview.png`.
 Regenerate `docs/images/` when the pictures in the README change.
 
 ## Branches

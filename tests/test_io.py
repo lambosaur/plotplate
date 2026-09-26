@@ -12,6 +12,7 @@ from plotplate.latex import figure_tex, standalone_document
 from plotplate.render import preview, wireframe
 from plotplate.svg import export_svg, import_svg
 from plotplate.tidy import fill_gaps, merge_panels, tidy
+from plotplate.variants import find_layouts
 
 
 def test_svg_roundtrip_keeps_boxes(layout, tmp_path):
@@ -42,7 +43,7 @@ def test_svg_import_handles_transforms_and_units(tmp_path):
 </svg>"""
     )
     data, _ = import_svg(svg)
-    assert data["page"] == {"width": 100.0, "height": 50.0}
+    assert data["area"] == {"width": 100.0, "height": 50.0}
     assert data["panels"]["A"]["box"] == [5.0, 0.0, 40.0, 50.0]
     assert data["panels"]["B"]["box"] == [55.0, 0.0, 40.0, 25.0]
 
@@ -173,15 +174,18 @@ def test_demo_copy_and_build(tmp_path):
     assert main(["demo"]) == 0  # lists the cases
     assert main(["demo", "nope", "--dir", str(dest)]) == 1  # unknown case
     assert main(["demo", "figure", "--dir", str(dest)]) == 0
+    figure = dest / "figures" / "figure_1"
     assert (dest / "legacy" / "manuscript.pdf").exists()
-    assert (dest / "fig1" / "layout.yaml").exists()
+    assert (figure / "layout.yaml").exists()
     assert main(["demo", "figure", "--dir", str(dest)]) == 1  # refuses a non-empty folder
     pytest.importorskip("seaborn")
     pytest.importorskip("pyarrow")
     assert main(["demo", "figure", "--dir", str(dest), "--build", "--force"]) == 0
-    assert (dest / "legacy" / "draft" / "layout.yaml").exists()
-    assert (dest / "fig1" / "export" / "Figure1.pdf").exists()
-    assert (dest / "fig1" / "preview-page.png").exists()
+    # the three layouts of the walkthrough: read back, optimized, and the maintained one
+    assert set(find_layouts(figure)) == {"base", "detected", "optimized"}
+    assert load_yaml(figure / "layout.optimized.yaml")["area"] == {"width": 183.0, "height": 168.0}
+    assert (figure / "export" / "Figure1.pdf").exists()
+    assert (figure / "preview-page.png").exists()
 
 
 def test_svg_import_illustrator_style_ids(tmp_path):
@@ -204,15 +208,22 @@ def test_svg_import_illustrator_style_ids(tmp_path):
     assert [i.code for i in issues] == ["svg-unlabelled"]
 
 
-def test_demo_hard_layout_case(tmp_path):
+def test_awkward_arrangements_are_read_back_and_refused_by_the_optimizer(tmp_path):
+    """The fixture nobody should copy: an inset, a pinwheel, and overflowing content."""
     from plotplate.cli import main
+    from plotplate.pack import PackError, Target, optimize
 
-    dest = tmp_path / "hard"
-    assert main(["demo", "hard-layout", "--dir", str(dest), "--build"]) == 0
-    assert (dest / "hard.pdf").exists()
-    layout = load_yaml(dest / "layout.yaml")
-    assert len(layout["panels"]) == 7  # inset merged into its panel, pinwheel recovered
-    assert (dest / "preview.png").exists()
+    from .fixtures.awkward_figure import build
+
+    pdf = build(tmp_path / "awkward.pdf")
+    out = tmp_path / "layout.detected.yaml"
+    assert main(["from-pdf", str(pdf), "-o", str(out), "--axes", "--guides"]) == 0
+    data = load_yaml(out)
+    assert len(data["panels"]) == 7  # inset merged into its panel, pinwheel recovered
+    assert data["page"]["paper"] == "a4"  # a figure-only PDF: the sheet asked for is recorded
+    # Those panels really do overlap, so there is no grid to re-spend: the optimizer says so.
+    with pytest.raises(PackError, match="do not form a grid"):
+        optimize(pp.Layout.load(out), Target())
 
 
 def test_build_refuses_an_interpreter_without_plotplate(layout, tmp_path, capsys):

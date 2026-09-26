@@ -67,6 +67,7 @@ class PdfLayout:
     method: str = "placed"  # "placed" or "detected"
     notes: list[str] = field(default_factory=list)
     area: Rect | None = None  # figure area on the page (mm), origin of the layout coordinates
+    paper: str | None = None  # the sheet the source page was, when it is a known paper size
 
 
 def _pdf_matrix(values: list[float]) -> np.ndarray:
@@ -336,6 +337,7 @@ def layout_from_pdf(
     detect: bool = False,
     axes: bool = False,
     guides: float | None = None,
+    paper: str | None = "a4",
 ) -> PdfLayout:
     """Draft a layout from placed graphics on one page of a PDF.
 
@@ -348,6 +350,7 @@ def layout_from_pdf(
         detect: skip placed graphics and use gutter detection on the rendered page.
         axes: also read the plotting areas inside each panel (vector panels only).
         guides: with ``axes``, name edges shared by several panels within this tolerance (mm).
+        paper: sheet to record when the PDF is a figure on its own (``None`` for no sheet).
 
     Returns:
         The layout mapping (coordinates relative to the figure area), the placed graphics
@@ -363,7 +366,7 @@ def layout_from_pdf(
         letters = _letters(page) if use_letters else []
         notes: list[str] = []
         if not placed:
-            return _detect_fallback(page, path, name, notes)
+            return _detect_fallback(page, path, name, notes, paper)
         coverage = _placed_coverage(page, placed)
         inner = (
             {name: _inner_rects(page, item.box) for name, item in ((p.name, p) for p in placed)}
@@ -371,12 +374,13 @@ def layout_from_pdf(
             else {}
         )
 
-    groups = (
-        _group_by_letter(placed, letters)
-        if use_letters
-        else {f"S{i + 1:02d}": [p] for i, p in enumerate(placed)}
-    )
-    panels, area = _panels_from_groups(groups)
+        groups = (
+            _group_by_letter(placed, letters)
+            if use_letters
+            else {f"S{i + 1:02d}": [p] for i, p in enumerate(placed)}
+        )
+        panels, area = _panels_from_groups(groups)
+        sheet, sheet_paper = _sheet_section(page, area, paper)
     if axes:
         _add_axes_entries(panels, groups, inner, area, notes)
         if guides is not None:
@@ -400,15 +404,14 @@ def layout_from_pdf(
             f"placed graphics cover only {coverage:.0%} of the drawn content: parts of the figure "
             "are flattened into paths; check the wireframe, or use --detect"
         )
-    data: dict[str, Any] = {
-        "schema": 1,
-        "name": name or path.stem,
-        "page": {"width": round(float(area.w), 1), "height": round(float(area.h), 1)},
-    }
+    data: dict[str, Any] = {"schema": 1, "name": name or path.stem}
+    if sheet:
+        data["page"] = sheet  # the sheet; `area` is the figure on it
+    data["area"] = {"width": round(float(area.w), 1), "height": round(float(area.h), 1)}
     if axes and guides is not None:
         data["guides"] = found
     data["panels"] = panels
-    return PdfLayout(data, placed, letters, "placed", notes, area)
+    return PdfLayout(data, placed, letters, "placed", notes, area, sheet_paper)
 
 
 def _placed_coverage(page: Any, placed: list[Placed]) -> float:
@@ -434,10 +437,40 @@ def _placed_coverage(page: Any, placed: list[Placed]) -> float:
     return covered / drawn if drawn else 1.0
 
 
-def _detect_fallback(page: Any, path: Path, name: str | None, notes: list[str]) -> PdfLayout:
+def _paper_of(page: Any) -> str | None:
+    """The paper name of a PDF page, when its size is one plotplate knows."""
+    from .layout import PAPERS
+
+    width, height = pt_to_mm(page.rect.width), pt_to_mm(page.rect.height)
+    return next(
+        (name for name, (w, h) in PAPERS.items() if abs(w - width) < 2 and abs(h - height) < 2),
+        None,
+    )
+
+
+def _sheet_section(page: Any, area: Rect, paper: str | None) -> tuple[dict[str, Any], str | None]:
+    """The ``page:`` section for a drafted layout, and the paper it came from.
+
+    A manuscript page tells us its own paper size, so the draft records it. A figure-only
+    PDF (the whole page is the figure) says nothing about the sheet, and then ``paper`` --
+    what the caller asked for -- is used. Margins are made to fit the figure width; edit
+    them to match the manuscript.
+    """
+    from .layout import sheet_for
+
+    found = _paper_of(page)
+    whole_page = area.w > pt_to_mm(page.rect.width) - 10 and area.h > pt_to_mm(page.rect.height) - 10
+    name = paper if (found is None or whole_page) else found
+    return sheet_for(name, area.w), name
+
+
+def _detect_fallback(
+    page: Any, path: Path, name: str | None, notes: list[str], paper: str | None = None
+) -> PdfLayout:
     import tempfile
 
     from .detect import draft_layout
+    from .layout import sheet_for
 
     notes.append("used gutter detection on the rendered page (no placed graphics were used)")
     width_mm = pt_to_mm(page.rect.width)
@@ -446,8 +479,12 @@ def _detect_fallback(page: Any, path: Path, name: str | None, notes: list[str]) 
         page.get_pixmap(dpi=300).save(image)
         data = draft_layout(image, width_mm, name=name or path.stem)
     page_area = Rect(0.0, 0.0, width_mm, pt_to_mm(page.rect.height))
+    found = _paper_of(page) or paper
+    sheet = sheet_for(found, width_mm)
+    if sheet:
+        data = {"schema": data["schema"], "name": data["name"], "page": sheet, **data}
     notes.append("whole page used: body text and captions become segments; delete or merge them")
-    return PdfLayout(data, [], [], "detected", notes, page_area)
+    return PdfLayout(data, [], [], "detected", notes, page_area, found)
 
 
 def render_area(

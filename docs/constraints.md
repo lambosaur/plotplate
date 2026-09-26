@@ -1,6 +1,7 @@
 # Constraints: boxes computed, not typed
 
-[← README](../README.md) · [layout reference](layout-spec.md) · [alignment](alignment.md)
+[← README](../README.md) · [layout reference](layout-spec.md) · [optimize](optimize.md) ·
+[alignment](alignment.md)
 
 ## Scope
 
@@ -21,7 +22,7 @@ dependency.
 ## Example
 
 ```yaml
-page: {width: double, height: solve}   # solve: computed from the rules below
+area: {width: double, height: solve}   # solve: computed from the rules below
 constraints:
   defaults: {gap: 4}
   rules:
@@ -35,7 +36,7 @@ panels: {A: {}, B: {}, C: {}, D: {}, E: {}}
 
 This gives the demo figure exactly: `A [0, 0, 89.5, 55]`, `B [93.5, 0, 89.5, 55]`,
 `C [0, 59, 183, 42]`, and a page height of 150 mm (55 + 4 + 42 + 4 + 45).
-Change `page.width` to 174 and the panels become 85 mm wide, with the gaps still 4 mm.
+Change `area.width` to 174 and the panels become 85 mm wide, with the gaps still 4 mm.
 
 ## Rules
 
@@ -76,6 +77,15 @@ That is the way to fix one panel (a photograph at its native aspect, say) and le
   that took the minimum size or the whole page.
 - `plotplate resolve layout.yaml -o frozen.yaml` writes the solved boxes as plain numbers and drops
   the `constraints` section, when you want to stop solving and edit by hand.
+
+## Relation to `plotplate optimize`
+
+Constraints compute boxes from relations you wrote; [`plotplate optimize`](optimize.md) computes them
+from boxes that already exist, by spending the white space between them.
+Use the optimizer on a draft read back from an old figure, and constraints for the figure you
+maintain.
+An optimized layout is plain numbers, so writing constraints afterwards is how you keep the result
+alive through the next change of journal.
 
 ## Relation to guides and alignment rules
 

@@ -7,7 +7,8 @@ A layout file (YAML) looks like::
     journal: nature            # bundled preset name or path to a preset YAML
     style_files: [../style.yaml]
     style: {font: {size: 7}}   # inline overrides, applied last
-    page: {width: double, height: 150}   # mm, or a named width from the journal
+    page: {paper: a4, margins: 25, caption: 25}   # the sheet the figure is printed on
+    area: {width: double, height: 150}   # the figure itself: mm, or a journal width name
     guides:                    # named alignment lines, page coordinates (mm)
       x: {plots_left: 12}
       y: {row1_bottom: 55}
@@ -29,6 +30,7 @@ sets ``ref: panel``. See ``docs/layout-spec.md`` for the full reference.
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,12 +39,81 @@ from typing import TYPE_CHECKING, Any
 
 from .config import deep_merge, default_style, dump_yaml, load_journal, load_yaml
 from .geometry import Rect
+from .variants import resolve_layout_path
 
 if TYPE_CHECKING:
     from .panel import Panel
 
 SCHEMA_VERSION = 1
 _GUIDE_REF = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*(?:([+-])\s*([0-9.]+))?\s*$")
+
+#: Sheet sizes (mm) usable in ``page.paper``.
+PAPERS: dict[str, tuple[float, float]] = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
+DEFAULT_MARGIN_MM = 25.0
+
+
+def split_area_page(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Separate the figure area from the sheet in a raw layout mapping.
+
+    ``area:`` is the figure's own box and ``page:`` the sheet it is printed on. Layouts
+    written before that split put the box in ``page:``, which is still read as the area.
+    """
+    area = data.get("area")
+    page = data.get("page") if isinstance(data.get("page"), dict) else None
+    if area is not None:
+        return dict(area or {}), page
+    if page is not None and (page.get("width") is not None or page.get("height") is not None):
+        return dict(page), None
+    return {}, page
+
+
+def area_section(data: dict[str, Any]) -> dict[str, Any]:
+    """The mapping inside ``data`` that holds the figure size, created if absent.
+
+    Returns the live sub-mapping, so a writer can set width/height in place without
+    caring whether the layout uses ``area:`` or the older ``page:`` box.
+    """
+    page = data.get("page")
+    if (
+        data.get("area") is None
+        and isinstance(page, dict)
+        and (page.get("width") is not None or page.get("height") is not None)
+    ):
+        return page
+    if not isinstance(data.get("area"), dict):
+        data["area"] = {}
+    section: dict[str, Any] = data["area"]
+    return section
+
+
+def sheet_for(paper: str | None, width: float | None = None) -> dict[str, Any]:
+    """A ``page:`` section for ``paper``, with margins that leave room for ``width`` mm.
+
+    The commands that draft a layout use this: a figure of a known width on a known sheet
+    determines the side margins, so the layout records where the figure will sit.
+    """
+    if not paper or str(paper).lower() == "none":
+        return {}
+    name = str(paper).lower()
+    if name not in PAPERS:
+        raise ValueError(f"unknown paper {paper!r}; use one of {list(PAPERS)} or 'none'")
+    side = DEFAULT_MARGIN_MM
+    if width is not None and 0 < width < PAPERS[name][0]:
+        side = min(DEFAULT_MARGIN_MM, round((PAPERS[name][0] - width) / 2, 2))
+    return {"paper": name, "margins": {"left": side, "right": side, "top": 25, "bottom": 25}}
+
+
+@dataclass(frozen=True)
+class Sheet:
+    """Where the figure sits on the printed sheet, all in millimetres."""
+
+    paper: str
+    size: tuple[float, float]
+    margins: dict[str, float]
+    text: Rect  # the text block: what the figure has to fit in
+    area: Rect  # the figure itself, at the top of the text block
+    caption: float  # space kept under the figure for its caption
+    assumed: bool = False  # the layout declares no sheet; this one was supplied by a command
 
 
 @dataclass(frozen=True)
@@ -136,9 +207,7 @@ class Layout:
 
         # `area:` is the figure's own box; `page:` then describes the sheet it must fit on.
         # Layouts written before that split used `page:` for the box, which still works.
-        area = data.get("area")
-        self.sheet: dict[str, Any] | None = data.get("page") if area else None
-        area = area or data.get("page") or {}
+        area, self.sheet = split_area_page(data)
         self.width = self._resolve_width(area.get("width"))
         if area.get("height") is None:
             raise ValueError("area.height is required (mm, or 'solve' with constraints)")
@@ -165,8 +234,8 @@ class Layout:
 
     @classmethod
     def load(cls, path: str | Path) -> Layout:
-        """Load a layout YAML file."""
-        path = Path(path)
+        """Load a layout YAML file, or the ``layout.yaml`` of a figure folder."""
+        path = resolve_layout_path(path)
         return cls(load_yaml(path), path)
 
     def save(self, path: str | Path | None = None) -> Path:
@@ -176,6 +245,13 @@ class Layout:
             raise ValueError("No path given and the layout was not loaded from a file")
         dump_yaml(self.raw, target)
         return target
+
+    @property
+    def file(self) -> Path:
+        """The file this layout was loaded from; layouts built in memory have none."""
+        if self.path is None:
+            raise ValueError(f"layout {self.name!r} was not loaded from a file")
+        return self.path
 
     @property
     def base_dir(self) -> Path:
@@ -199,6 +275,41 @@ class Layout:
         if name not in self.panels:
             raise KeyError(f"No panel {name!r} in layout {self.name!r}; have {list(self.panels)}")
         return Panel(self, self.panels[name])
+
+    def resolved(self) -> dict[str, Any]:
+        """The same figure as plain numbers: every box explicit, no mosaic, no constraints.
+
+        Name, journal, style, sheet, guides, labels and axes grids are kept, so the result
+        loads to the same figure. ``plotplate resolve`` writes this, and the commands that
+        move boxes around (``optimize``) start from it. A layout still using ``page:`` for the
+        figure box is migrated to ``area:`` on the way.
+        """
+        data = copy.deepcopy(self.raw)
+        data.pop("mosaic", None)
+        data.pop("constraints", None)  # the solved boxes replace the rules
+        area, sheet = split_area_page(self.raw)
+        data["area"] = {**area, "width": self.width, "height": self.height}
+        if sheet is None:
+            data.pop("page", None)
+        panels: dict[str, Any] = {}
+        for name, spec in self.panels.items():
+            entry = dict((self.raw.get("panels") or {}).get(name) or {})
+            entry["box"] = spec.box.to_list()
+            entry.pop("margins", None)
+            axes = {}
+            for ax_name, ax in spec.axes.items():
+                ax_raw = dict((entry.get("axes") or {}).get(ax_name) or {})
+                if not isinstance(ax_raw, dict):
+                    ax_raw = {}
+                for key in ("left", "top", "right", "bottom", "ref"):
+                    ax_raw.pop(key, None)
+                ax_raw["box"] = ax.region.to_list()
+                axes[ax_name] = ax_raw
+            if axes:
+                entry["axes"] = axes
+            panels[name] = entry
+        data["panels"] = panels
+        return data
 
     # ------------------------------------------------------------------ resolution
 
@@ -396,23 +507,55 @@ class Layout:
 
     # ------------------------------------------------------------------ validation
 
+    def sheet_geometry(self, paper: str | None = None) -> Sheet | None:
+        """Where this figure sits on its sheet, or ``None`` when no sheet is known.
+
+        The sheet comes from the layout's ``page:`` section. ``paper`` supplies one when the
+        layout declares none (what ``plotplate view --paper a4`` does), and the result is then
+        marked ``assumed``.
+
+        The figure is placed at the top of the text block, centred between the side margins:
+        that is where a LaTeX float puts it, and the caption goes underneath.
+        """
+        sheet = self.sheet
+        assumed = False
+        if not sheet:
+            if paper is None:
+                return None
+            # No sheet was declared: assume one with margins that fit this figure, so the view
+            # is about where the figure sits rather than about margins nobody chose.
+            sheet, assumed = sheet_for(paper, self.width), True
+        raw_paper = sheet.get("paper", "a4")
+        if isinstance(raw_paper, str):
+            size = PAPERS.get(raw_paper.lower())
+            name = raw_paper.lower()
+        else:
+            values = [float(v) for v in raw_paper]
+            size, name = (values[0], values[1]), "custom"
+        if size is None:
+            raise ValueError(f"unknown paper {raw_paper!r}; use a4, letter or [width, height] in mm")
+        margins_raw = sheet.get("margins")
+        if isinstance(margins_raw, int | float):
+            margins_raw = dict.fromkeys(("top", "bottom", "left", "right"), float(margins_raw))
+        margins_raw = margins_raw or {}
+        margins = {
+            edge: float(margins_raw.get(edge, DEFAULT_MARGIN_MM))
+            for edge in ("left", "right", "top", "bottom")
+        }
+        text = Rect.from_edges(
+            margins["left"], margins["top"], size[0] - margins["right"], size[1] - margins["bottom"]
+        )
+        area = Rect(text.x + max(0.0, (text.w - self.width) / 2), text.y, self.width, self.height)
+        return Sheet(
+            name, size, margins, text, area, float(sheet.get("caption", 0) or 0), assumed=assumed
+        )
+
     def sheet_size(self) -> tuple[float, float, float, float] | None:
         """The sheet as ``(width, height, text width, text height)`` in mm, if one is declared."""
-        if not self.sheet:
+        geometry = self.sheet_geometry()
+        if geometry is None:
             return None
-        papers = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
-        paper = self.sheet.get("paper", "a4")
-        size = papers.get(str(paper).lower()) if isinstance(paper, str) else tuple(paper)
-        if size is None:
-            raise ValueError(f"unknown paper {paper!r}; use a4, letter or [width, height] in mm")
-        margins = self.sheet.get("margins") or {}
-        if isinstance(margins, int | float):
-            margins = dict.fromkeys(("top", "bottom", "left", "right"), float(margins))
-        left = float(margins.get("left", 25))
-        right = float(margins.get("right", 25))
-        top = float(margins.get("top", 25))
-        bottom = float(margins.get("bottom", 25))
-        return (size[0], size[1], size[0] - left - right, size[1] - top - bottom)
+        return (*geometry.size, geometry.text.w, geometry.text.h)
 
     def _sheet_issues(self) -> list[Issue]:
         """Does the figure fit on the sheet, with room for its caption?"""

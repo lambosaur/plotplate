@@ -13,7 +13,8 @@ from typing import Any
 
 from . import __version__
 from .config import dump_yaml, list_journals, load_journal, load_yaml
-from .layout import Issue, Layout
+from .layout import Issue, Layout, area_section, sheet_for
+from .variants import find_layouts, resolve_layout_path, variant_path
 
 
 def _rel(path: str | Path) -> str:
@@ -96,6 +97,18 @@ def _print_issues(issues: list[Issue]) -> int:
     return 1 if any(i.level == "error" for i in issues) else 0
 
 
+def _journal_width(layout: Layout, name: str) -> float | None:
+    """A named width from the layout's journal preset, or None after reporting the problem."""
+    widths = ((layout.journal or {}).get("page") or {}).get("widths") or {}
+    if name not in widths or widths[name] is None:
+        print(
+            f"--width {name!r}: not a number, and not a width of the layout's journal {widths}",
+            file=sys.stderr,
+        )
+        return None
+    return float(widths[name])
+
+
 def cmd_journals(args: argparse.Namespace) -> int:
     for name in list_journals():
         preset = load_journal(name)
@@ -115,17 +128,24 @@ def cmd_new(args: argparse.Namespace) -> int:
         print(f"{out} exists (use --force)", file=sys.stderr)
         return 1
     rows = [r.strip() for r in args.mosaic.split("/")]
-    data = {
+    data: dict[str, Any] = {
         "schema": 1,
         "name": args.name or out.parent.name,
         "journal": args.journal,
-        "page": {"width": _number_or_name(args.width), "height": args.height},
-        "guides": {"x": {}, "y": {}},
-        "mosaic": {"rows": rows, "gap": [args.gap, args.gap]},
-        "panels": {},
     }
+    sheet = sheet_for(args.paper)
+    if sheet:
+        data["page"] = sheet  # the sheet; `area` below is the figure itself
+    data["area"] = {"width": _number_or_name(args.width), "height": args.height}
+    data["guides"] = {"x": {}, "y": {}}
+    data["mosaic"] = {"rows": rows, "gap": [args.gap, args.gap]}
+    data["panels"] = {}
     dump_yaml(data, out)
     layout = Layout.load(out)
+    if sheet:  # the journal width is a number now, so the margins can be made to fit it
+        data["page"] = sheet_for(args.paper, layout.width)
+        dump_yaml(data, out)
+        layout = Layout.load(out)
     print(f"wrote {_rel(out)}: {len(layout.panels)} panels on {layout.width} x {layout.height} mm")
     return _print_issues(layout.validate())
 
@@ -146,28 +166,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def cmd_resolve(args: argparse.Namespace) -> int:
     """Print or write the layout with all boxes made explicit (mosaic/guides resolved)."""
     layout = Layout.load(args.layout)
-    data = dict(layout.raw)
-    data.pop("mosaic", None)
-    data.pop("constraints", None)  # the solved boxes replace the rules
-    key = "area" if "area" in data else "page"
-    data[key] = {**(data.get(key) or {}), "height": layout.height}
-    panels = {}
-    for name, spec in layout.panels.items():
-        entry = dict((layout.raw.get("panels") or {}).get(name) or {})
-        entry["box"] = spec.box.to_list()
-        entry.pop("margins", None)
-        axes = {}
-        for ax_name, ax in spec.axes.items():
-            ax_raw = dict((entry.get("axes") or {}).get(ax_name) or {})
-            for key in ("left", "top", "right", "bottom", "ref"):
-                ax_raw.pop(key, None)
-            ax_raw["box"] = ax.region.to_list()
-            axes[ax_name] = ax_raw
-        if axes:
-            entry["axes"] = axes
-        panels[name] = entry
-    data["panels"] = panels
-    dump_yaml(data, args.output or args.layout)
+    dump_yaml(layout.resolved(), args.output or layout.file)
     print(f"wrote {_rel(args.output or args.layout)}")
     return 0
 
@@ -224,8 +223,9 @@ def cmd_detect(args: argparse.Namespace) -> int:
 def cmd_merge(args: argparse.Namespace) -> int:
     from .tidy import merge_panels
 
-    data = merge_panels(load_yaml(args.layout), args.panels, args.name)
-    out = args.output or args.layout
+    path = resolve_layout_path(args.layout)
+    data = merge_panels(load_yaml(path), args.panels, args.name)
+    out = args.output or path
     dump_yaml(data, out)
     print(f"wrote {_rel(out)}: {'+'.join(args.panels)} -> {args.name}")
     return 0
@@ -244,6 +244,7 @@ def cmd_from_pdf(args: argparse.Namespace) -> int:
         detect=args.detect,
         axes=args.axes,
         guides=args.guides,
+        paper=None if args.paper in (None, "none") else args.paper,
     )
     data = result.data
     if args.journal:
@@ -261,6 +262,8 @@ def cmd_from_pdf(args: argparse.Namespace) -> int:
                 return 1
             width = float(widths[width])
         data = scale_layout(data, width)
+        if data.get("page") and result.paper:  # margins follow the rescaled figure
+            data["page"] = sheet_for(result.paper, float(area_section(data)["width"]))
     if args.fill_gap is not None:
         data = tidy(fill_gaps(data, args.fill_gap), tolerance=args.tolerance, step=0.5)
     out = Path(args.output)
@@ -279,6 +282,64 @@ def cmd_from_pdf(args: argparse.Namespace) -> int:
         wireframe(Layout.load(out), args.wireframe, background=background)
         print(f"wrote {_rel(args.wireframe)} (boxes over {background.name})")
     return 0
+
+
+def cmd_optimize(args: argparse.Namespace) -> int:
+    """Re-spend the white space between panels, within a distortion limit."""
+    from .pack import PackError, Target, optimize
+
+    layout = Layout.load(args.layout)
+    width = None
+    if args.width is not None:
+        value = _number_or_name(args.width)
+        width = float(value) if not isinstance(value, str) else _journal_width(layout, value)
+        if width is None:
+            return 1
+    height: float | None = None
+    if args.height not in (None, "scale"):
+        height = layout.height if args.height == "keep" else float(args.height)
+    target = Target(
+        gap=args.gap,
+        stretch=args.max_stretch,
+        shrink=args.max_shrink if args.max_shrink is not None else args.max_stretch,
+        width=width,
+        height=height,
+        freeze=tuple(args.freeze or ()),
+        keep_aspect=tuple(args.keep_aspect or ()),
+    )
+    try:
+        data, report = optimize(layout, target, tolerance=args.tolerance)
+    except PackError as exc:
+        print(f"cannot optimize {_rel(layout.file)}: {exc}", file=sys.stderr)
+        return 1
+
+    overlaps = f", {report.overlaps} overlapping pairs" if report.overlaps else ""
+    print(
+        f"{_rel(layout.file)}: {len(report.before)} panels, "
+        f"{layout.width:g} x {layout.height:g} mm{overlaps}"
+    )
+    before, after = report.gutters
+    print(
+        f"  gutters {before[0]:.1f}-{before[1]:.1f} mm -> {after[0]:.1f}-{after[1]:.1f} mm; "
+        f"panels cover {report.occupancy[0]:.0%} -> {report.occupancy[1]:.0%} of "
+        f"{report.width:g} x {report.height:g} mm"
+    )
+    for name in report.after:
+        fx, fy = report.factors(name)
+        frozen = "  frozen" if name in target.freeze else ""
+        print(
+            f"  {name:6s} {report.before[name].to_list(1)!s:26s} -> "
+            f"{report.after[name].to_list(1)!s:26s} {fx:.2f}x {fy:.2f}x{frozen}"
+        )
+    for note in report.notes:
+        print(f"  note: {note}")
+    if args.dry_run:
+        print("--dry-run: nothing written")
+        return 0
+    out = Path(args.output) if args.output else variant_path(layout.file, "optimized")
+    dump_yaml(data, out)
+    print(f"wrote {_rel(out)}")
+    return _print_issues(Layout.load(out).validate())
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
@@ -317,20 +378,22 @@ def cmd_relabel(args: argparse.Namespace) -> int:
             entry["label"] = {"text": spec.label, "offset": list(spec.label_offset)}
         panels[name] = entry
     data["labels"] = "id"  # labels are explicit now
-    dump_yaml(data, args.output or args.layout)
+    out = args.output or layout.file
+    dump_yaml(data, out)
     letters = {name: (panels[name].get("label") or {}).get("text") for name in panels}
-    print(f"wrote {_rel(args.output or args.layout)}: {letters}")
+    print(f"wrote {_rel(out)}: {letters}")
     return 0
 
 
 def cmd_tidy(args: argparse.Namespace) -> int:
     from .tidy import fill_gaps, tidy
 
-    data = load_yaml(args.layout)
+    path = resolve_layout_path(args.layout)
+    data = load_yaml(path)
     if args.fill_gap is not None:
         data = fill_gaps(data, args.fill_gap)
     data = tidy(data, tolerance=args.tolerance, step=args.step)
-    out = args.output or args.layout
+    out = args.output or path
     dump_yaml(data, out)
     print(f"wrote {_rel(out)}")
     return _print_issues(Layout.load(out).validate())
@@ -377,65 +440,59 @@ def _demo_cases() -> dict[str, Any]:
 
 
 def _build_figure_demo(dest: Path, python: str) -> int:
-    """Run the figure walkthrough: legacy PDF, tables, panels, export, page view."""
+    """Run the walkthrough: legacy PDF, optimized draft, tables, panels, export, page view."""
     import os
     import subprocess
 
     from .render import export_figure, page_view
 
-    print("\n[1/4] draft a layout from the legacy PDF")
+    figure = dest / "figures" / "figure_1"
+    print("\n[1/5] read the old figure back: legacy/manuscript.pdf -> layout.detected.yaml")
     status = main(
         [
             "from-pdf", str(dest / "legacy" / "manuscript.pdf"),
-            "-o", str(dest / "legacy" / "draft" / "layout.yaml"),
-            "--journal", "nature", "--width", "double", "--fill-gap", "4",
-            "--wireframe", str(dest / "legacy" / "draft" / "wireframe.png"),
+            "-o", str(figure / "layout.detected.yaml"),
+            "--journal", "nature", "--width", "double", "--paper", "a4",
+            "--axes", "--guides", "--wireframe", str(figure / "detected.wireframe.png"),
         ]
     )  # fmt: skip
-    print("\n[2/4] write the demo tables")
+    # --height 168 also brings the draft under Nature's 170 mm limit, which it exceeded.
+    # --height 168 also brings the draft under Nature's 170 mm limit, which it exceeded.
+    print("\n[2/5] spend the white space of that draft: layout.optimized.yaml")
+    optimized = main(
+        [
+            "optimize", str(figure / "layout.detected.yaml"),
+            "--gap", "4", "--max-stretch", "1.5", "--height", "168",
+        ]
+    )  # fmt: skip
+    status = max(status, optimized)
+    print("\n[3/5] write the demo tables")
     env = {**os.environ, "MPLBACKEND": "Agg"}
-    subprocess.run([python, "make_data.py"], cwd=dest / "fig1", env=env, check=True)
-    print("\n[3/4] draw the panels of the refined layout, then preview, LaTeX and checks")
-    if main(["build", str(dest / "fig1" / "layout.yaml"), "--python", python]) != 0:
+    subprocess.run([python, "make_data.py"], cwd=figure, env=env, check=True)
+    print("\n[4/5] draw the panels of the maintained layout, then preview, LaTeX and checks")
+    if main(["build", str(figure / "layout.yaml"), "--python", python]) != 0:
         print("\nthe build failed: see the messages above (a panel script error, or failed checks)")
         return 1
-    main(["wireframe", str(dest / "fig1" / "layout.yaml")])
-    print("\n[4/4] production file and page view")
-    layout = Layout.load(dest / "fig1" / "layout.yaml")
-    out, issues = export_figure(layout, dest / "fig1" / "export" / "Figure1.pdf")
+    main(["wireframe", str(figure / "layout.yaml")])
+    print("\n[5/5] production file and page view")
+    layout = Layout.load(figure / "layout.yaml")
+    out, issues = export_figure(layout, figure / "export" / "Figure1.pdf")
     status = max(status, _print_issues(issues))
     page = page_view(layout, paper="a4")
     print(f"wrote {_rel(out)}, {_rel(page['png'])}")
     print("\nlook at, in order:")
     for path in (
-        dest / "legacy" / "draft" / "wireframe.png",
-        dest / "fig1" / "wireframe.png",
-        dest / "fig1" / "preview.png",
+        figure / "detected.wireframe.png",
+        figure / "wireframe.png",
+        figure / "preview.png",
         page["png"],
     ):
         print(f"  {_rel(path)}")
+    print(f"\nthen open all three layouts at once:\n  plotplate view {_rel(figure)}")
     return status
 
 
-def _build_hard_layout_demo(dest: Path, python: str) -> int:
-    """Generate the awkward-arrangement PDF and read it back."""
-    import os
-    import subprocess
-
-    print("\n[1/3] build the PDF with awkward arrangements")
-    env = {**os.environ, "MPLBACKEND": "Agg"}
-    subprocess.run([python, "make.py"], cwd=dest, env=env, check=True)
-    print("\n[2/3] read it back")
-    status = main(
-        [
-            "from-pdf", str(dest / "hard.pdf"), "-o", str(dest / "layout.yaml"),
-            "--axes", "--guides", "--wireframe", str(dest / "wireframe.png"),
-        ]
-    )  # fmt: skip
-    print("\n[3/3] validate and preview (the overlaps are real: see the README)")
-    main(["validate", str(dest / "layout.yaml")])
-    main(["preview", str(dest / "layout.yaml")])
-    return status
+_DEMO_BUILDERS = {"figure": _build_figure_demo}
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
@@ -462,8 +519,11 @@ def cmd_demo(args: argparse.Namespace) -> int:
         return 0
 
     python = args.python or sys.executable
-    needed = ("pandas", "pyarrow", "scipy", "seaborn") if args.case == "figure" else ("matplotlib",)
-    missing = _missing_modules(python, needed)
+    builder = _DEMO_BUILDERS.get(args.case)
+    if builder is None:
+        print(f"the {args.case} case has no build steps; read {_rel(dest / 'README.md')}")
+        return 0
+    missing = _missing_modules(python, ("pandas", "pyarrow", "scipy", "seaborn"))
     if missing:
         print(
             f"cannot build: {python} is missing {', '.join(missing)}.\n"
@@ -473,9 +533,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    if args.case == "figure":
-        return _build_figure_demo(dest, python)
-    return _build_hard_layout_demo(dest, python)
+    return builder(dest, python)
 
 
 def _copy_tree(source: Any, target: Path) -> None:
@@ -599,7 +657,17 @@ def cmd_features(args: argparse.Namespace) -> int:
 def cmd_view(args: argparse.Namespace) -> int:
     from .view import serve
 
-    serve(args.layout, host=args.host, port=args.port, open_browser=not args.no_browser)
+    found = find_layouts(args.layout)
+    if not found:
+        print(f"{_rel(args.layout)}: no layout.yaml (nor layout.<variant>.yaml)", file=sys.stderr)
+        return 1
+    serve(
+        args.layout,
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_browser,
+        paper=None if args.paper in (None, "none") else args.paper,
+    )
     return 0
 
 
@@ -773,6 +841,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--width", default="full", help="mm or journal width name (single, double…)")
     p.add_argument("--height", type=float, required=True, help="mm")
     p.add_argument("--gap", type=float, default=4.0, help="mm between cells")
+    p.add_argument("--paper", default="a4", help="sheet the figure is printed on: a4, letter, none")
     p.add_argument("--name")
     p.add_argument("--force", action="store_true")
 
@@ -811,6 +880,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--journal", help="journal preset to record in the layout")
     p.add_argument("--width", help="rescale the draft to this width: mm, or a --journal width name")
     p.add_argument("--min-size", type=float, default=5.0, help="mm; ignore smaller graphics")
+    p.add_argument(
+        "--paper",
+        default="a4",
+        help="sheet to record when the PDF is a figure on its own (a4, letter, none)",
+    )
     p.add_argument("--no-letters", action="store_true", help="do not name/group by panel letters")
     p.add_argument("--detect", action="store_true", help="force gutter detection (flattened PDFs)")
     p.add_argument(
@@ -835,6 +909,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fill-gap", type=float, help="first grow boxes to meet neighbours this many mm apart"
     )
+
+    p = add("optimize", cmd_optimize, "Grow the panels to use the white space between them.")
+    p.add_argument("layout", help="layout file, or the figure folder holding layout.yaml")
+    p.add_argument("-o", "--output", help="default: layout.optimized.yaml next to the input")
+    p.add_argument("--gap", type=float, default=4.0, help="mm; every gutter becomes this wide")
+    p.add_argument(
+        "--max-stretch", type=float, default=1.2, help="a panel may grow by this factor (1 = never)"
+    )
+    p.add_argument(
+        "--max-shrink", type=float, help="a panel may shrink by this factor (default: same)"
+    )
+    p.add_argument("--width", help="target width: mm, or a journal width name (single, double…)")
+    p.add_argument("--height", default="scale", help="'scale' (keep the proportions), 'keep', or mm")
+    p.add_argument("--tolerance", type=float, default=1.0, help="mm; edges this close are shared")
+    p.add_argument("--freeze", nargs="*", help="panels that keep their exact size")
+    p.add_argument("--keep-aspect", nargs="*", help="panels that keep their width/height ratio")
+    p.add_argument("--dry-run", action="store_true", help="report, write nothing")
 
     p = add("diff", cmd_diff, "Compare two layouts: what moved, merged, split, was added or removed.")
     p.add_argument("old")
@@ -892,7 +983,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p = add("view", cmd_view, "Serve a local page showing the figure with its layout on top.")
-    p.add_argument("layout")
+    p.add_argument("layout", help="layout file, or the figure folder (every variant is offered)")
+    p.add_argument(
+        "--paper", default="a4", help="sheet to show when the layout declares none (or 'none')"
+    )
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--no-browser", action="store_true", help="do not open a browser")

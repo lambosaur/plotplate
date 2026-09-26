@@ -3,7 +3,6 @@
 Run with `pixi run -e dev docs-figures`. Writes docs/images/*.png.
 """
 
-import shutil
 import tempfile
 from itertools import pairwise
 from pathlib import Path
@@ -60,13 +59,13 @@ def run() -> None:
         if main(["demo", "figure", "--dir", str(demo), "--build"]) != 0:
             raise SystemExit("demo build reported errors")
 
+        figure = demo / "figures" / "figure_1"
         with pymupdf.open(demo / "legacy" / "manuscript.pdf") as doc:
             doc[0].get_pixmap(dpi=90).save(OUT / "step1-source-page.png")
-        shutil.copy(demo / "legacy" / "draft" / "wireframe.png", Path(tmp) / "draft.png")
-        _thumbnail(demo / "legacy" / "draft" / "wireframe.png", OUT / "step2-draft-layout.png", 900)
-        _thumbnail(demo / "fig1" / "wireframe.png", OUT / "step3-refined-layout.png", 900)
-        _thumbnail(demo / "fig1" / "preview.png", OUT / "step4-final-figure.png", 1100)
-        _thumbnail(demo / "fig1" / "preview-page.png", OUT / "step4-final-page.png", 600)
+        _thumbnail(figure / "detected.wireframe.png", OUT / "step2-draft-layout.png", 900)
+        _thumbnail(figure / "wireframe.png", OUT / "step3-refined-layout.png", 900)
+        _thumbnail(figure / "preview.png", OUT / "step4-final-figure.png", 1100)
+        _thumbnail(figure / "preview-page.png", OUT / "step4-final-page.png", 600)
 
         _pipeline(
             [

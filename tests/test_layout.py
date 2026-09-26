@@ -43,7 +43,7 @@ def test_style_layers(layout_data, tmp_path):
 
 
 def test_validate_reports_problems(layout_data):
-    layout_data["page"]["height"] = 200
+    layout_data["area"]["height"] = 200
     layout_data["panels"]["C"] = {"box": [80, 0, 20, 20]}
     layout_data["panels"]["A"]["axes"]["bad"] = {"box": [85, 5, 20, 10]}
     issues = {i.code for i in pp.Layout(layout_data).validate()}
@@ -70,7 +70,7 @@ def test_auto_labels_follow_reading_order(layout_data):
         "heat": {"box": [93, 0, 89, 55]},
         "legend": {"box": [0, 105, 20, 10], "label": False},
     }
-    layout_data["page"]["height"] = 120
+    layout_data["area"]["height"] = 120
     layout_data.pop("mosaic")
     panels = pp.Layout(layout_data).panels
     assert [panels[k].label for k in ("roc_prc", "heat", "scatter_grid")] == ["a", "b", "c"]
@@ -98,6 +98,14 @@ def test_sheet_section_checks_that_the_figure_fits(layout_data):
 
 
 def test_page_without_area_still_means_the_figure_box(layout_data):
-    layout = pp.Layout(layout_data)  # legacy spelling used by every existing layout
+    legacy = {k: v for k, v in layout_data.items() if k != "area"}
+    legacy["page"] = dict(layout_data["area"])  # the spelling used before page/area were split
+    layout = pp.Layout(legacy)
     assert (layout.width, layout.height) == (183.0, 60.0)
     assert layout.sheet_size() is None
+    assumed = layout.sheet_geometry("a4")  # a command may supply one; it is marked as assumed
+    assert (
+        assumed is not None
+        and assumed.assumed
+        and assumed.area.to_list() == [13.5, 25.0, 183.0, 60.0]
+    )

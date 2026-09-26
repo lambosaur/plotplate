@@ -108,7 +108,8 @@ def test_cli_from_pdf_rescales_to_journal_width(manuscript, tmp_path):
         == 0
     )
     data = load_yaml(out)
-    assert data["page"]["width"] == 183
+    assert data["area"]["width"] == 183
+    assert data["page"]["paper"] == "a4"  # the source page was A4: the sheet is recorded
     assert data["journal"] == "nature"
     assert (tmp_path / "draft" / "wireframe.png").exists()
 

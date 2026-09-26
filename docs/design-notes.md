@@ -30,6 +30,11 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 | Screenshot import uses a deterministic XY-cut, not model vision. | An agent only names and merges segments, and tools compute all coordinates. The wireframe overlay verifies the result. |
 | `plotplate` is a standalone tool (pipx/uv); outputs go next to the given layout. | Works in any repository without copying a skeleton; the installation holds no user files. |
 | The demo ships inside the package (`plotplate demo`). | Users of a tool installation can run it; the repository has one copy, and README images are generated from it. |
+| One demo case, not several. | The walkthrough is the example; awkward arrangements (pinwheel, inset, overflow) are a regression fixture in `tests/fixtures/`, because they are something to handle, not something to copy. |
+| Variants of a figure are files named `layout.<variant>.yaml` in the same folder. | A draft, its optimization and the maintained layout are the same figure: they share the panels, and a name is enough to keep them apart. No registry, no index file. |
+| `plotplate optimize` recovers a grid and solves boundaries, instead of packing boxes freely. | A grid is what a reader sees in a multi-panel figure, and keeping it means the arrangement (and the alignment) survives. Free packing would need integer programming and would reorder panels, which is the author's decision, not the tool's. |
+| The optimizer's limit is a distortion factor, and what the limit costs is reported. | How much a panel may grow changes how the figure reads, so the tool states the trade-off (`--max-stretch 1.48 would fill it`) rather than choosing it. |
+| An explicitly requested size is an error when unreachable; the current size bends. | A number the user typed is a promise; the default is only a default. |
 | All files are tracked on every branch (`main`, `dev`, features). | Git cannot keep per-branch file sets maintainably, and installations never include development files. |
 | Inkscape SVG import only updates boxes. | Drawing tools are good for geometry. Style, guides and grid settings stay in YAML. |
 | Text is kept as text (PDF Type 42, SVG `fonttype: none`). | Journals require editable, embedded fonts. |
@@ -37,6 +42,11 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 
 ## Alternatives considered
 
+- **Bin packing / integer programming for the optimizer** (letting a panel move to another row, or
+  swapping panels to fill a hole).
+  It changes the meaning of the figure, needs a solver plotplate does not ship, and has no obvious
+  objective: "fewer wasted millimetres" competes with "panel A must stay first".
+  The grid model keeps the arrangement and reports what the limits left unused.
 - **figurefirst** (layouts drawn in Inkscape, axes created from SVG rectangles).
   The closest existing idea.
   It targets a single matplotlib figure for the whole page, which conflicts with the

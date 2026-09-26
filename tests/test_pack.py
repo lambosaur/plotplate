@@ -1,0 +1,125 @@
+"""The optimizer: recover the grid, spend the white space, respect the limits."""
+
+import pytest
+
+import plotplate as pp
+from plotplate.cli import main
+from plotplate.config import dump_yaml, load_yaml
+from plotplate.geometry import Rect
+from plotplate.pack import PackError, Target, optimize, read_grid
+
+RAGGED = {
+    "schema": 1,
+    "name": "ragged",
+    "page": {"paper": "a4", "margins": 13.5},
+    "area": {"width": 183, "height": 140},
+    "panels": {
+        # Two rows, uneven gutters (12 and 10 mm), a ragged right edge, a short last row.
+        "A": {"box": [0, 0, 70, 48], "axes": {"main": {"box": [11, 4, 56, 40]}}},
+        "B": {"box": [82, 0, 60, 44], "axes": {"main": {"box": [92, 3, 46, 37]}}},
+        "C": {"box": [0, 58, 100, 40], "axes": {"main": {"box": [12, 62, 84, 32]}}},
+        "D": {"box": [110, 58, 50, 40], "axes": {"main": {"box": [120, 62, 36, 32]}}},
+    },
+}
+
+
+@pytest.fixture
+def ragged(tmp_path):
+    dump_yaml(RAGGED, tmp_path / "layout.detected.yaml")
+    return pp.Layout.load(tmp_path / "layout.detected.yaml")
+
+
+def _boxes(data):
+    return {name: Rect.from_list(panel["box"]) for name, panel in data["panels"].items()}
+
+
+def test_read_grid_finds_rows_columns_and_spanning_panels():
+    grid = read_grid(
+        {
+            "A": Rect(0, 0, 40, 30),
+            "B": Rect(44, 0, 40, 30),
+            "C": Rect(0, 34, 84, 30),  # spans both columns
+        }
+    )
+    assert grid.xs == [0.0, 40.0, 44.0, 84.0]
+    assert grid.span("C", "x") == (0, 3)
+    # C spans the gutter between A and B, and it is still a gutter: C's width includes it.
+    assert [gutter for _size, gutter in grid.strips("x")] == [False, True, False]
+    assert [gutter for _size, gutter in grid.strips("y")] == [False, True, False]
+
+
+def test_read_grid_calls_an_inset_an_inset():
+    grid = read_grid({"A": Rect(0, 0, 90, 60), "zoom": Rect(55, 12, 30, 22)})
+    assert grid.insets == {"zoom": "A"}
+    assert list(grid.spans) == ["A"]
+
+
+def test_read_grid_refuses_an_arrangement_that_is_not_a_grid():
+    pinwheel = {
+        "B": Rect(95, 0, 55, 30),
+        "D": Rect(124, 27, 26, 30),  # overlaps B by 3 mm, and is not inside it
+    }
+    with pytest.raises(PackError, match="overlap without being nested"):
+        read_grid(pinwheel)
+
+
+def test_optimize_normalises_the_gutters_and_fills_the_width(ragged):
+    data, report = optimize(ragged, Target(gap=4.0, stretch=1.3, shrink=1.0))
+    boxes = _boxes(data)
+    assert report.gutters[1] == (4.0, 4.0)  # every gutter is the asked-for gap
+    assert report.occupancy[1] > report.occupancy[0] + 0.1  # and the space went to the panels
+    assert max(box.right for box in boxes.values()) == pytest.approx(183, abs=0.01)
+    assert data["area"]["width"] == 183.0
+    for name in boxes:
+        fx, fy = report.factors(name)
+        assert 1.0 <= fx <= 1.3 + 1e-6 and 1.0 <= fy <= 1.3 + 1e-6
+    assert not pp.Layout(data, ragged.path).validate()  # no overlap, nothing outside the area
+
+
+def test_axes_keep_their_margins_when_the_panel_grows(ragged):
+    data, _ = optimize(ragged, Target(gap=4.0, stretch=1.3))
+    panel = pp.Layout(data, ragged.path).panels["A"]
+    axes = panel.axes["main"].region
+    # The 11 mm that held the tick labels is still 11 mm; the plot itself took the extra space.
+    assert axes.left - panel.box.left == pytest.approx(11, abs=0.05)
+    assert panel.box.right - axes.right == pytest.approx(70 - 67, abs=0.05)
+    assert axes.w > 56
+
+
+def test_no_distortion_allowed_keeps_the_panels_and_narrows_the_figure(ragged):
+    """With stretch 1 the panels cannot grow, so the gutters shrink and the figure follows."""
+    _data, report = optimize(ragged, Target(gap=4.0, stretch=1.0, shrink=1.0))
+    for name in report.after:
+        assert report.factors(name) == pytest.approx((1.0, 1.0), abs=0.01)
+    assert report.width < 183  # it no longer fills the column, and the report says why
+    assert any("could not keep its width" in note for note in report.notes)
+
+
+def test_a_frozen_panel_keeps_its_size(ragged):
+    _data, report = optimize(ragged, Target(gap=4.0, stretch=1.4, freeze=("B",)))
+    assert report.factors("B") == pytest.approx((1.0, 1.0), abs=0.01)
+    assert report.factors("A")[0] > 1.0
+
+
+def test_a_target_that_cannot_be_reached_says_what_would_be_needed(ragged):
+    with pytest.raises(PackError, match=r"grow 2\.\d+x to fill 400"):
+        optimize(ragged, Target(gap=4.0, stretch=1.2, width=400.0))
+
+
+def test_keep_aspect_holds_the_ratio(ragged):
+    _data, report = optimize(ragged, Target(gap=4.0, stretch=1.4, keep_aspect=("D",)))
+    before, after = report.before["D"], report.after["D"]
+    assert after.w / after.h == pytest.approx(before.w / before.h, rel=1e-3)
+
+
+def test_cli_writes_the_optimized_variant_next_to_the_input(ragged, tmp_path):
+    assert main(["optimize", str(tmp_path), "--gap", "4", "--max-stretch", "1.3"]) == 0
+    written = tmp_path / "layout.optimized.yaml"
+    assert written.exists()
+    assert load_yaml(written)["area"]["width"] == 183.0
+    assert "constraints" not in load_yaml(written)
+
+
+def test_cli_dry_run_writes_nothing(ragged, tmp_path):
+    assert main(["optimize", str(ragged.path), "--dry-run"]) == 0
+    assert not (tmp_path / "layout.optimized.yaml").exists()

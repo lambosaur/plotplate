@@ -19,7 +19,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Rectangle
 
 from .geometry import Rect, mm_to_pt, pt_to_mm
-from .layout import Issue, Layout
+from .layout import PAPERS as PAPER_MM, Issue, Layout
 
 SIZE_TOL_MM = 0.1
 
@@ -331,9 +331,6 @@ def export_figure(
     return out, issues
 
 
-PAPER_MM = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
-
-
 def page_view(
     layout: Layout, out_dir: str | Path | None = None, paper: str = "a4"
 ) -> dict[str, Path]:
@@ -346,19 +343,14 @@ def page_view(
 
     out_dir = Path(out_dir) if out_dir is not None else layout.base_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    declared = layout.sheet_size()
-    if declared is not None:  # the layout's own `page:` section wins over the argument
-        paper_w, paper_h, _, text_height = declared
-        top = (paper_h - text_height) / 2
-        left = (paper_w - layout.width) / 2
-    else:
-        if paper not in PAPER_MM:
-            raise ValueError(f"unknown paper {paper!r}; use one of {list(PAPER_MM)}")
-        paper_w, paper_h = PAPER_MM[paper]
-        left = (paper_w - layout.width) / 2
-        top = 20.0
-    if left < 5:
-        raise ValueError(f"figure width {layout.width} mm does not fit on {paper} paper")
+    # The layout's own `page:` section wins; `paper` only supplies one when it declares none.
+    sheet = layout.sheet_geometry(paper)
+    if sheet is None:
+        raise ValueError(f"unknown paper {paper!r}; use one of {list(PAPER_MM)}")
+    paper_w, paper_h = sheet.size
+    left, top = sheet.area.left, sheet.area.top
+    if left < 0:
+        raise ValueError(f"figure width {layout.width} mm does not fit on {sheet.paper} paper")
     figure = compose(layout)
     doc = pymupdf.open()
     page = doc.new_page(width=mm_to_pt(paper_w), height=mm_to_pt(paper_h))

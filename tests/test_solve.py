@@ -84,7 +84,7 @@ def constrained_layout(tmp_path):
     data = {
         "schema": 1,
         "journal": "nature",
-        "page": {"width": "double", "height": "solve"},
+        "area": {"width": "double", "height": "solve"},
         "constraints": DEMO_RULES,
         "panels": {name: {} for name in NAMES},
     }
@@ -104,7 +104,7 @@ def test_resolve_freezes_the_solution(constrained_layout, tmp_path):
     assert main(["resolve", str(constrained_layout), "-o", str(out)]) == 0
     data = load_yaml(out)
     assert "constraints" not in data
-    assert data["page"]["height"] == 150
+    assert data["area"]["height"] == 150
     assert data["panels"]["B"]["box"] == [93.5, 0.0, 89.5, 55.0]
     assert pp.Layout(data).panels["B"].box.to_list(1) == [93.5, 0.0, 89.5, 55.0]
 
@@ -112,7 +112,7 @@ def test_resolve_freezes_the_solution(constrained_layout, tmp_path):
 def test_validate_warns_when_the_rules_are_too_loose(tmp_path):
     data = {
         "schema": 1,
-        "page": {"width": 183, "height": 100},
+        "area": {"width": 183, "height": 100},
         "constraints": {"rules": [{"pin": {"panel": "A", "left": 0, "top": 0}}]},
         "panels": {"A": {}, "B": {}},
     }

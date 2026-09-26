@@ -1,8 +1,12 @@
-# Demo figure: Nature double column. Synthetic data only.
+# The maintained layout of figure 1: Nature double column, A4 manuscript. Synthetic data only.
+# Variants of this figure live next to it as layout.<variant>.yaml (see docs/workflow.md):
+#   layout.detected.yaml   what `plotplate from-pdf` read from legacy/manuscript.pdf
+#   layout.optimized.yaml  what `plotplate optimize` made of that draft
+# `plotplate view .` shows all of them, and lets you lay one over another.
 schema: 1
-name: fig1
+name: figure_1
 journal: nature
-style_files: [../style.yaml]
+style_files: [../../style.yaml]
 # The sheet this figure is meant for; `plotplate validate` checks that it fits.
 # Nature-like margins: the text block is then exactly the 183 mm double-column width.
 page: {paper: a4, margins: {left: 13.5, right: 13.5, top: 25, bottom: 25}, caption: 25}

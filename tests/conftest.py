@@ -13,7 +13,8 @@ def layout_data():
         "schema": 1,
         "name": "t",
         "journal": "nature",
-        "page": {"width": "double", "height": 60},
+        "page": {"paper": "a4", "margins": {"left": 13.5, "right": 13.5, "top": 25, "bottom": 25}},
+        "area": {"width": "double", "height": 60},
         "guides": {"x": {"left": 10}, "y": {"bottom": 50}},
         "mosaic": {"rows": ["AB"], "gap": 4},
         "panels": {

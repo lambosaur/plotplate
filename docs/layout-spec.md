@@ -12,6 +12,19 @@ Python, the preview, the Inkscape SVG and the generated LaTeX all read it.
 `page` (the sheet) contains `area` (the figure), which contains `panels`, which contain `axes`.
 A panel is one matplotlib figure saved as one file; see [coordinates.md](coordinates.md).
 
+`page:` is optional: without it plotplate knows only the figure, and `plotplate view --paper a4` will
+assume a sheet to show it on.
+Layouts written before the two were split use `page:` for the figure box, which is still read that way
+(a `page:` with `width`/`height` and no `paper` is the figure); `plotplate resolve` rewrites them.
+
+## File names, and several layouts for one figure
+
+The layout of a figure is `layout.yaml`, in the figure's own folder.
+Alternatives live next to it as `layout.<variant>.yaml` (`layout.detected.yaml`,
+`layout.optimized.yaml`, `layout.poster.yaml`), share the same panels, and are all offered by
+`plotplate view`; see [workflow.md](workflow.md#several-layouts-for-one-figure).
+Commands accept the folder as well as the file.
+
 ## Coordinates and units
 
 - All lengths are millimetres.
@@ -26,14 +39,18 @@ A panel is one matplotlib figure saved as one file; see [coordinates.md](coordin
 
 ```yaml
 schema: 1
-name: fig1                  # also the name of the generated fig1.tex
+name: figure_1              # also the name of the generated figure_1.tex
 journal: nature             # bundled preset name, or a path to a preset YAML
 style_files: [../style.yaml]  # project-wide style, relative to this file
 style:                      # inline overrides, applied last
   font: {small: 5.5}
-page:
+page:                       # the sheet the figure is printed on (optional, but checked)
+  paper: a4                 # a4, letter, or [width, height] in mm
+  margins: {left: 13.5, right: 13.5, top: 25, bottom: 25}
+  caption: 25               # space kept under the figure for its caption
+area:                       # the figure itself: what the panel coordinates are relative to
   width: double             # a number (mm) or a width name from the journal preset
-  height: 150
+  height: 150               # or `solve`, with a `constraints:` section
 guides:                     # named alignment lines, page coordinates
   x: {left_axis: 11}
   y: {row1_bottom: 46}
@@ -151,7 +168,7 @@ With `mosaic`, repeat a letter over the cells it covers; use as many cells as th
 needs:
 
 ```yaml
-page: {width: double, height: 168}
+area: {width: double, height: 168}
 mosaic:                  # tall panel D on the right of A, B, C; E below D
   rows: [AD, BD, CD, CE]
   heights: [45, 40, 39, 35]

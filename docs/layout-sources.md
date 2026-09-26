@@ -46,6 +46,26 @@ For each object, it also reports:
 
 These numbers show why an old figure looks uneven.
 
+### What a panel box means, and what it is not
+
+The box of a panel is **where a drawn thing is**, never where a letter is:
+
+| source | the box is | what that implies |
+| --- | --- | --- |
+| `from-pdf` | the exact rectangle the placed file was drawn in | it includes the margins the panel file itself has, but none of the white space around it in the assembled figure |
+| `from-pdf --detect`, `detect` | the ink bounding box of the block, found by cutting along white gutters | usually tighter than the real panel: the outer tick labels are in, the surrounding white space is not |
+| `svg-import` | the rectangle you drew | whatever you meant it to be |
+
+Nothing here measures "where the content is densest", and a letter never produces a box: letters group
+and name the objects, and a panel's box is extended to include its own letter.
+So a panel letter that was typed far from its plot names the right panel but does not move it.
+
+Because the boxes come from the drawn objects, a drafted layout normally has uneven white space
+between them — that is a property of the figure that was assembled, not an error in the reading.
+Two commands change that on purpose: `plotplate tidy --fill-gap 4` grows every box until it meets its
+neighbours 4 mm away, and `plotplate optimize` does the same and then re-spends the recovered space
+within a distortion limit ([optimize.md](optimize.md)).
+
 ### Panel names from letters
 
 If the page contains panel letters as **live text** (single letters such as `A`, `b`, `(c)`), each
@@ -90,7 +110,12 @@ Rename the guides to something meaningful (`left_axis`, `row1_bottom`) while ref
 - A manuscript page is fine: body text and the caption are ignored, because only placed objects count.
 - Choose the page with `--page N`.
 - `--journal nature --width double` rescales the draft to the journal width; `--fill-gap 4` grows the
-  boxes to fill the figure with 4 mm between panels.
+  boxes to fill the figure with 4 mm between panels, and `plotplate optimize` does that within a
+  distortion limit ([optimize.md](optimize.md)).
+- `--paper a4` records the sheet in the draft, so `plotplate validate` can check that the figure fits
+  the text block and `plotplate view` can show it on the page.
+  A manuscript page tells plotplate its own paper size; for a figure-only PDF, `--paper` is what it
+  uses.
 - `\includegraphics[trim=…, clip]` records the full, unclipped object: the box can be slightly larger
   than the visible part.
 - Always check `--wireframe check.png`, which draws the boxes over the rendered figure area.

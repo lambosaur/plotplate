@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 
 from .geometry import Rect
-from .layout import Issue, Layout
+from .layout import Issue, Layout, area_section
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
@@ -302,9 +302,9 @@ def import_svg(
     found = read_svg_boxes(path)
     issues: list[Issue] = list(found["issues"])
     data: dict[str, Any] = copy.deepcopy(base) if base else {"schema": 1, "name": Path(path).stem}
-    data.setdefault("page", {})
-    data["page"]["width"] = round(found["width"], 2)
-    data["page"]["height"] = round(found["height"], 2)
+    area = area_section(data)
+    area["width"] = round(found["width"], 2)
+    area["height"] = round(found["height"], 2)
     data.pop("mosaic", None)
 
     panels = data.setdefault("panels", {}) or {}
