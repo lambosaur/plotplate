@@ -1,8 +1,11 @@
 """Regenerate the images used in README.md and docs/ from a fresh demo build.
 
-Run with `pixi run -e dev docs-figures`. Writes docs/images/*.png.
+Run with `pixi run -e dev docs-figures`. Writes docs/images/*.png, and docs/images/glossary.svg
+the first time: the glossary is meant to be corrected by hand afterwards, so an existing SVG is
+left alone unless `--force` is given.
 """
 
+import sys
 import tempfile
 from itertools import pairwise
 from pathlib import Path
@@ -110,11 +113,14 @@ def _callout(
     weight: str = "normal",
     align: str = "left",
     va: str = "center",
+    gid: str | None = None,
 ) -> None:
-    ax.annotate(
+    annotation = ax.annotate(
         text, xy=xy, xytext=xytext, fontsize=9.5, color=color, weight=weight, ha=align, va=va,
         arrowprops={"arrowstyle": "-", "color": color, "lw": 0.8, "shrinkA": 3, "shrinkB": 3},
     )  # fmt: skip
+    if gid:
+        annotation.set_gid(gid)
 
 
 def _dimension(
@@ -136,24 +142,27 @@ def _dimension(
 
 def _draw_sheet(ax: Any, view: View) -> None:
     """The sheet: paper, text block, the figure on it, the caption, some body text."""
-    _box(ax, view, (0.0, 0.0, *SHEET), fc="white", ec=GREY, lw=1.0)
+    _box(ax, view, (0.0, 0.0, *SHEET), fc="white", ec=GREY, lw=1.0, gid="sheet-paper")
     _box(
         ax, view,
         (MARGINS["left"], MARGINS["top"], SHEET[0] - MARGINS["left"] - MARGINS["right"],
          SHEET[1] - MARGINS["top"] - MARGINS["bottom"]),
-        fc="none", ec=GREY, lw=0.7, ls=(0, (4, 3)),
+        fc="none", ec=GREY, lw=0.7, ls=(0, (4, 3)), gid="sheet-text-block",
     )  # fmt: skip
-    _box(ax, view, AREA, fc="#eff6ff", ec=BLUE, lw=1.2)
+    _box(ax, view, AREA, fc="#eff6ff", ec=BLUE, lw=1.2, gid="sheet-area")
     for name, rect in PANELS.items():
         _box(
             ax, view, (AREA[0] + rect[0], AREA[1] + rect[1], rect[2], rect[3]),
-            fc="white", ec=BLUE, lw=0.5,
+            fc="white", ec=BLUE, lw=0.5, gid=f"sheet-panel-{name.lower()}",
         )  # fmt: skip
         ax.text(
             *view.point(AREA[0] + rect[0] + 2, AREA[1] + rect[1] + 5.5), name.lower(),
             fontsize=6, weight="bold", color=BLUE,
         )  # fmt: skip
-    _box(ax, view, (AREA[0], AREA[1] + AREA[3] + 3, AREA[2], CAPTION), fc="#f3f4f6", ec="none")
+    _box(
+        ax, view, (AREA[0], AREA[1] + AREA[3] + 3, AREA[2], CAPTION),
+        fc="#f3f4f6", ec="none", gid="sheet-caption",
+    )  # fmt: skip
     ax.text(
         *view.point(AREA[0] + 2, AREA[1] + AREA[3] + 3 + CAPTION / 2),
         "Figure 1 | Caption of the figure.", fontsize=6, color="#6b7280", va="center",
@@ -167,22 +176,29 @@ def _draw_sheet(ax: Any, view: View) -> None:
 
 def _draw_area(ax: Any, view: View) -> None:
     """The figure area magnified: panels, their letters, their axes, the guides."""
-    _box(ax, view, (0.0, 0.0, 183.0, 120.0), fc="#eff6ff", ec=BLUE, lw=1.4)
+    _box(ax, view, (0.0, 0.0, 183.0, 120.0), fc="#eff6ff", ec=BLUE, lw=1.4, gid="area")
     for name, rect in PANELS.items():
-        _box(ax, view, rect, fc="white", ec=BLUE, lw=1.0)
+        _box(ax, view, rect, fc="white", ec=BLUE, lw=1.0, gid=f"panel-{name.lower()}")
         ax.text(
             *view.point(rect[0] + 2.5, rect[1] + 7), name.lower(), fontsize=12, weight="bold",
             color=BLUE,
         )  # fmt: skip
         for axes_name, axes_rect in PANEL_AXES[name].items():
-            _box(ax, view, axes_rect, fc="#fffbeb", ec=AMBER, lw=1.0, ls=(0, (3, 2)))
+            _box(
+                ax, view, axes_rect, fc="#fffbeb", ec=AMBER, lw=1.0, ls=(0, (3, 2)),
+                gid=f"axes-{name.lower()}-{axes_name}",
+            )  # fmt: skip
             ax.text(
                 *view.point(axes_rect[0] + 2, axes_rect[1] + 5), axes_name, fontsize=8,
                 color=AMBER, family="monospace",
             )  # fmt: skip
-    for start, end in (((-5.0, GUIDE_Y), (188.0, GUIDE_Y)), ((GUIDE_X, -5.0), (GUIDE_X, 125.0))):
+    guides = (((-5.0, GUIDE_Y), (188.0, GUIDE_Y)), ((GUIDE_X, -5.0), (GUIDE_X, 125.0)))
+    for axis, (start, end) in zip("yx", guides, strict=True):
         first, second = view.point(*start), view.point(*end)
-        ax.plot([first[0], second[0]], [first[1], second[1]], color=SLATE, lw=1.0, ls=(0, (3, 2)))
+        line = ax.plot(
+            [first[0], second[0]], [first[1], second[1]], color=SLATE, lw=1.0, ls=(0, (3, 2))
+        )
+        line[0].set_gid(f"guide-{axis}")
 
 
 def _zoom_lines(ax: Any, sheet: View, zoom: View) -> None:
@@ -211,19 +227,30 @@ def _glossary_callouts(ax: Any, sheet: View, zoom: View, left: float, right: flo
         "gutter — the space between\npanels. optimize makes them\nequal, and gives the rest"
         "\nback to the panels"
     )
-    _callout(ax, page, sheet.point(105, 1), (left, 24), INK, "bold")
+    _callout(ax, page, sheet.point(105, 1), (left, 24), INK, "bold", gid="callout-page")
     _callout(
-        ax, margins, sheet.point(MARGINS["left"], SHEET[1] - MARGINS["bottom"]), (left, 250), SLATE
+        ax, margins, sheet.point(MARGINS["left"], SHEET[1] - MARGINS["bottom"]), (left, 250), SLATE,
+        gid="callout-margins",
+    )  # fmt: skip
+    _callout(
+        ax, area, sheet.point(AREA[0], AREA[1] + 30), (left, 128), BLUE, "bold", gid="callout-area"
     )
-    _callout(ax, area, sheet.point(AREA[0], AREA[1] + 30), (left, 128), BLUE, "bold")
     _callout(
         ax, caption, sheet.point(AREA[0] + 40, AREA[1] + AREA[3] + 3 + CAPTION / 2), (left, 186),
-        SLATE,
+        SLATE, gid="callout-caption",
     )  # fmt: skip
-    _callout(ax, panel, zoom.point(183, 3), (right, 12), BLUE, "bold", "right")
-    _callout(ax, axes, zoom.point(174.5, 30), (right, 84), AMBER, "normal", "right")
-    _callout(ax, guide, zoom.point(186, GUIDE_Y), (right, 150), SLATE, "normal", "right")
-    _callout(ax, gutter, zoom.point(183, 64), (right, 224), SLATE, "normal", "right")
+    _callout(ax, panel, zoom.point(183, 3), (right, 12), BLUE, "bold", "right", gid="callout-panel")
+    _callout(
+        ax, axes, zoom.point(174.5, 30), (right, 84), AMBER, "normal", "right", gid="callout-axes"
+    )
+    _callout(
+        ax, guide, zoom.point(186, GUIDE_Y), (right, 150), SLATE, "normal", "right",
+        gid="callout-guide",
+    )  # fmt: skip
+    _callout(
+        ax, gutter, zoom.point(183, 64), (right, 224), SLATE, "normal", "right",
+        gid="callout-gutter",
+    )  # fmt: skip
 
 
 def _glossary(target: Path) -> Path:
@@ -246,19 +273,36 @@ def _glossary(target: Path) -> Path:
         ax,
         "(0, 0) of every number in layout.yaml:\npanel boxes, axes rectangles, guides and"
         "\nmeasured geometry are millimetres from here",
-        origin, (ZOOM_AT[0] - 6, -22), BLUE, "normal", "left", va="bottom",
+        origin, (ZOOM_AT[0] - 6, -22), BLUE, "normal", "left", va="bottom", gid="callout-origin",
     )  # fmt: skip
     _dimension(ax, zoom.point(0, 126), zoom.point(183, 126), "area.width = 183 mm")
     _dimension(ax, zoom.point(-9, 0), zoom.point(-9, 120), "area.height", size=7)
     ax.text(-246.0, -28, "The levels of a figure", fontsize=15, weight="bold", color=INK, va="top")
-    fig.savefig(target, dpi=150, bbox_inches="tight", facecolor="white")
+    # svg.fonttype "none" keeps text as text rather than outlines, so the labels of the SVG can
+    # be corrected in Inkscape (or any editor) instead of being a pile of paths.
+    with plt.rc_context({"svg.fonttype": "none"}):
+        fig.savefig(target, dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return target
 
 
-def run() -> None:
+def _write_glossary(force: bool) -> None:
+    """Draw the glossary, unless the SVG in the repository has been edited by hand since.
+
+    The picture is a drawing, not a measurement: once it is right, it is worth correcting by
+    hand in Inkscape (the text is text, and every box carries the name of what it stands for).
+    Redrawing would throw those corrections away, so it happens only on request.
+    """
+    target = OUT / "glossary.svg"
+    if target.exists() and not force:
+        print(f"kept {target.relative_to(ROOT)} as it is (--force redraws it)")
+        return
+    _glossary(target)
+
+
+def run(force: bool = False) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    _glossary(OUT / "glossary.png")
+    _write_glossary(force)
     with tempfile.TemporaryDirectory() as tmp:
         demo = Path(tmp) / "demo"
         if main(["demo", "figure", "--dir", str(demo), "--build"]) != 0:
@@ -290,4 +334,4 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    run(force="--force" in sys.argv[1:])

@@ -263,14 +263,22 @@ def _axes_label(label: str, names: dict[str, str]) -> str:
     ``axes-A-main`` is what the exporter writes for a panel whose axes comes from ``margins:``,
     and such an axes has no entry of its own in the layout; the panel does, so its name is
     enough to split the id.
+
+    Axes names only have to be unique inside their panel: the id carries the panel, so two
+    panels may both have a ``roc``. Panel names may themselves contain a hyphen, which makes
+    ``axes-a-zoom-main`` ambiguous between panels ``a`` and ``a-zoom``; the longest panel name
+    that fits wins, and an axes the layout does list is matched by its full id before this
+    function is reached.
     """
     if "/" in label or not label.startswith("axes-"):
         return label
     rest = label.removeprefix("axes-")
-    for key, name in names.items():
-        prefix = key.removeprefix("panel-") + "-"
-        if key.startswith("panel-") and rest.startswith(prefix):
-            return f"{name}/{rest[len(prefix) :]}"
+    panels = sorted(
+        (key.removeprefix("panel-"), name) for key, name in names.items() if key.startswith("panel-")
+    )
+    for prefix, name in sorted(panels, key=lambda item: -len(item[0])):
+        if rest.startswith(prefix + "-"):
+            return f"{name}/{rest[len(prefix) + 1 :]}"
     return label
 
 

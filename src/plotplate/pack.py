@@ -268,6 +268,26 @@ class Target:
         return self.limits.get(panel, self.stretch if self.stretch is not None else 1.0)
 
 
+@dataclass(frozen=True)
+class Note:
+    """One thing the result does not say by itself, addressed to whoever reads the report.
+
+    A note is written for a person -- one sentence, printed after the table -- but it also
+    carries a stable ``code`` and the numbers behind the sentence, so that a script or an agent
+    can react to the kind of note rather than to its wording. ``plotplate optimize --json``
+    prints ``{"code": ..., "message": ..., <the numbers>}``; the codes are listed in
+    ``docs/optimize.md`` and do not change once published.
+    """
+
+    code: str
+    message: str
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        """The note as JSON: its code, its sentence, and the numbers it is about."""
+        return {"code": self.code, "message": self.message, **self.data}
+
+
 @dataclass
 class Report:
     """What the optimization changed, in the numbers a user needs to judge it."""
@@ -282,7 +302,7 @@ class Report:
     guides: tuple[int, int]  # named shared edges before/after
     stretch: float = 1.0  # the distortion limit that was applied
     automatic: bool = False  # ... and whether the optimizer chose it
-    notes: list[str] = field(default_factory=list)
+    notes: list[Note] = field(default_factory=list)
 
     def factors(self, name: str) -> tuple[float, float]:
         """How much panel ``name`` was stretched horizontally and vertically."""
@@ -382,7 +402,7 @@ def _panel_limits(
             _require(solver, sizes["x"] == (old.w / old.h) * sizes["y"])
 
 
-def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target, list[str]]:
+def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target, list[Note]]:
     """The target with sizes that can actually be reached, and what had to give.
 
     A size the user asked for explicitly is a promise: if the limits cannot deliver it, that is
@@ -394,7 +414,7 @@ def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target
     """
     totals = {"x": current_width if target.width is None else target.width, "y": target.height}
     explicit = {"x": target.width is not None, "y": target.height is not None}
-    notes = []
+    notes: list[Note] = []
     for axis in AXES:
         wanted = totals[axis]
         if wanted is None:
@@ -404,9 +424,13 @@ def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target
             continue
         if explicit[axis]:
             raise PackError(f"{axis}: {reason}")
+        side = "width" if axis == "x" else "height"
         notes.append(
-            f"the figure could not keep its {'width' if axis == 'x' else 'height'} of "
-            f"{wanted:g} mm: {reason}"
+            Note(
+                "size-bent",
+                f"the figure could not keep its {side} of {wanted:g} mm: {reason}",
+                {"axis": side, "requested_mm": round(wanted, 2), "reason": reason},
+            )
         )
         totals[axis] = None
     return replace(target, width=totals["x"], height=totals["y"]), notes
@@ -603,7 +627,7 @@ class Arrangement:
     boxes: dict[str, Rect]  # the new panel boxes, insets included
     filled: dict[str, Rect]  # the boxes after growing into the white space, before solving
     target: Target  # the target as it was actually reached
-    notes: list[str]
+    notes: list[Note]
 
     @property
     def size(self) -> tuple[float, float]:
@@ -688,13 +712,22 @@ def _notes(report: Report, arranged: Arrangement) -> None:
     grid, target = arranged.grid, arranged.target
     if grid.insets:
         report.notes.append(
-            "insets kept their place inside their host: "
-            + ", ".join(f"{k} in {v}" for k, v in sorted(grid.insets.items()))
+            Note(
+                "insets-kept",
+                "insets kept their place inside their host: "
+                + ", ".join(f"{k} in {v}" for k, v in sorted(grid.insets.items())),
+                {"insets": dict(sorted(grid.insets.items()))},
+            )
         )
     if report.guides[1] < report.guides[0]:
+        lost = report.guides[0] - report.guides[1]
         report.notes.append(
-            f"{report.guides[0] - report.guides[1]} shared axes edges no longer coincide: panels "
-            "in different rows grew by different factors; check `plotplate align` after rebuilding"
+            Note(
+                "guides-broken",
+                f"{lost} shared axes edges no longer coincide: panels in different rows grew by "
+                "different factors; check `plotplate align` after rebuilding",
+                {"lost": lost, "before": report.guides[0], "after": report.guides[1]},
+            )
         )
     for index, (top, bottom, empty, names) in enumerate(arranged.slack(), start=1):
         covered = report.width - empty - target.gap * (len(names) - 1)
@@ -705,12 +738,26 @@ def _notes(report: Report, arranged: Arrangement) -> None:
             else "filling it would mean growing them by more than half again"
         )
         report.notes.append(
-            f"row {index} ({', '.join(names)}, {top:.0f}-{bottom:.0f} mm) is {empty:.0f} mm "
-            f"narrower than the figure: its panels reached their {target.stretch:.2f}x limit, and "
-            f"{room}"
+            Note(
+                "row-slack",
+                f"row {index} ({', '.join(names)}, {top:.0f}-{bottom:.0f} mm) is {empty:.0f} mm "
+                f"narrower than the figure: its panels reached their {target.stretch:.2f}x limit, "
+                f"and {room}",
+                {
+                    "row": index,
+                    "panels": list(names),
+                    "top_mm": round(top, 2),
+                    "bottom_mm": round(bottom, 2),
+                    "spare_mm": round(empty, 2),
+                    "stretch": target.stretch,
+                    "fills_at": round(needed, 2) if needed <= STRETCH_CEILING else None,
+                },
+            )
         )
     if report.occupancy[1] <= report.occupancy[0] + 0.005:
-        report.notes.append("the panels already used the space: nothing much to gain here")
+        report.notes.append(
+            Note("nothing-gained", "the panels already used the space: nothing much to gain here")
+        )
 
 
 def _explain(

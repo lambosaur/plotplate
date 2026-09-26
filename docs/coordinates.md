@@ -7,7 +7,7 @@
 This file names the levels a figure is built from, and gives the conversions between their coordinate
 systems.
 
-![The levels of a figure: the sheet on the left, the figure area magnified on the right, with page, area, panel, axes, guide, gutter, margins and caption labelled](images/glossary.png)
+![The levels of a figure: the sheet on the left, the figure area magnified on the right, with page, area, panel, axes, guide, gutter, margins and caption labelled](images/glossary.svg)
 
 Everything below is that picture in words.
 
@@ -24,6 +24,33 @@ A panel *is* a matplotlib figure: `savefig` writes exactly one panel.
 A `SubFigure` cannot be saved on its own, and libraries such as seaborn's clustermap always create
 their own figure, which is why "one panel = one figure = one file" is the rule here, and why there is
 no level between panel and axes.
+
+## Where these words come from
+
+Most of them are borrowed, so that a layout file can be read by someone who has never seen
+plotplate. One is ours, and a few are borrowed words that mean something slightly different
+elsewhere.
+
+| this project | matplotlib | LaTeX | Illustrator / Inkscape | journal guidelines |
+| --- | --- | --- | --- | --- |
+| page | - | the page (`\paperwidth`) | document, page | page size |
+| margins | - | the body, `geometry` margins | margins | margins |
+| **area** | `Figure` | the `\includegraphics` box | artboard, canvas | "the figure" |
+| panel | `Figure` (one per file) | a `subfigure` | an object group | **panel** (`a`, `b`, `c`...) |
+| axes | **`Axes`** | - | - | a plot, a chart |
+| guide | - | - | **guide** (a non-printing line) | - |
+| gutter | `wspace`, `hspace` | `\columnsep` | gutter (between columns) | space between panels |
+| caption | - | `\caption` | - | caption, or **legend** |
+
+- **area** is the only word invented here. The candidates were taken: "figure" is what matplotlib
+  calls a panel *and* what the manuscript calls the whole thing, "page" is the sheet, and
+  "artboard" belongs to a drawing program. So the figure's own box is the *area*.
+- **axes**, in matplotlib and here, is one whole plot, not the two lines through the origin. This
+  trips up everyone once; matplotlib's own documentation says as much.
+- **gutter** in bookbinding is the inner margin of a page; here it is only the space between two
+  panels, as in a column layout.
+- **caption** is LaTeX's word; most life-science journals say *legend* for the same text.
+  plotplate never typesets it, it only keeps room for it (`page.caption`).
 
 ## The systems
 

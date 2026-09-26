@@ -260,3 +260,32 @@ def test_svg_import_survives_a_plain_svg_save(layout, tmp_path):
         layout.panels["A"].axes["roc"].region.to_list(), abs=0.01
     )
     assert [i.code for i in issues] == []
+
+
+def test_svg_import_keeps_axes_names_that_repeat_across_panels(tmp_path):
+    """Axes names are per-panel: two panels may both have a `roc`, and a panel name may hyphenate."""
+    import re
+
+    data = {
+        "schema": 1,
+        "name": "t",
+        "area": {"width": 180, "height": 60},
+        "panels": {
+            "A": {"box": [0, 0, 88, 60], "axes": {"roc": {"box": [10, 5, 70, 45]}}},
+            "A-zoom": {"box": [92, 0, 88, 60], "margins": [10, 5, 8, 10]},
+        },
+    }
+    path = tmp_path / "layout.yaml"
+    pp.config.dump_yaml(data, path)
+    layout = pp.Layout.load(path)
+
+    svg = export_svg(layout, tmp_path / "l.svg")
+    plain = tmp_path / "plain.svg"
+    plain.write_text(
+        re.sub(r'\s+inkscape:label="[^"]*"', "", svg.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    updated, issues = import_svg(plain, layout.raw)
+
+    assert set(updated["panels"]) == {"A", "A-zoom"}  # "A-zoom/main" did not become "A/zoom-main"
+    assert [i.code for i in issues] == []

@@ -58,6 +58,9 @@ The boxes are where the old figure put them, so the gutters are uneven and space
 1. Report the notes to the user rather than acting on them alone.
    `--max-stretch` is the user's call: a smaller limit distorts less, and a note says what it would
    buy.
+   With `--json`, each note is a record with a stable `code` (`row-slack`, `size-bent`,
+   `guides-broken`, `insets-kept`, `nothing-gained`); `--dry-run` reports without writing, and
+   `--as NAME` writes `layout.NAME.yaml` so two attempts can be compared in `plotplate view`.
 1. It refuses an arrangement that is not a grid (interlocking panels).
    Merge those panels instead.
 

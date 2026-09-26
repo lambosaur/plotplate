@@ -355,7 +355,7 @@ def _optimize_report(report: Any, target: Any, source: str) -> None:
             f"{report.after[name].to_list(1)!s:28s} {fx:.2f} x {fy:.2f}{note}"
         )
     for note in report.notes:
-        print(f"  note: {note}")
+        print(f"  note: {note.message}")
 
 
 def cmd_optimize(args: argparse.Namespace) -> int:
@@ -369,7 +369,11 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     except PackError as exc:
         print(f"cannot optimize {_rel(layout.file)}: {exc}", file=sys.stderr)
         return 1
-    out = Path(args.output) if args.output else variant_path(layout.file, "optimized")
+    name = getattr(args, "variant", None) or "optimized"
+    if "/" in name or "\\" in name:
+        print(f"--as takes a variant name, not a path: {name}", file=sys.stderr)
+        return 1
+    out = Path(args.output) if args.output else variant_path(layout.file, name)
 
     if args.json:
         print(
@@ -395,7 +399,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                         }
                         for name in report.after
                     },
-                    "notes": report.notes,
+                    "notes": [note.as_dict() for note in report.notes],
                 },
                 indent=2,
             )
@@ -982,6 +986,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("optimize", cmd_optimize, "Grow the panels to use the white space between them.")
     p.add_argument("layout", help="layout file, or the figure folder holding layout.yaml")
     p.add_argument("-o", "--output", help="default: layout.optimized.yaml next to the input")
+    p.add_argument(
+        "--as",
+        dest="variant",
+        metavar="NAME",
+        help="write layout.NAME.yaml next to the input, so several attempts can sit side by side "
+        "and `plotplate view` can switch between them (default: optimized)",
+    )
     p.add_argument("--gap", type=float, help="mm; every gutter becomes this wide (default 4)")
     p.add_argument(
         "--max-stretch",

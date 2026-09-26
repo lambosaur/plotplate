@@ -75,10 +75,29 @@ visible in a diff, and is something an agent can edit.
 The flags (`--gap`, `--max-stretch`, `--freeze`, `--keep-aspect`) override it for one run, for trying
 something out.
 
+## Notes
+
+A note is the one thing the numbers do not say by themselves.
+It is written as a sentence for whoever reads the terminal, and it also carries a code and the numbers
+behind the sentence, so a script does not have to read English:
+
+| code | what happened | numbers it carries |
+| --- | --- | --- |
+| `row-slack` | a row could not fill the width, because its panels reached their limit | `row`, `panels`, `top_mm`, `bottom_mm`, `spare_mm`, `stretch`, `fills_at` |
+| `size-bent` | the figure had to become narrower or shorter to keep its panels | `axis`, `requested_mm`, `reason` |
+| `guides-broken` | shared axes edges no longer line up after the change | `lost`, `before`, `after` |
+| `insets-kept` | a nested panel rode along inside its host | `insets` |
+| `nothing-gained` | the panels already used the space | — |
+
+With the default automatic limit, a well-behaved figure produces no notes at all: `row-slack` only
+appears when *you* set a limit that leaves space unused, and then `fills_at` is the limit that would
+spend it.
+The codes are part of the interface and do not change; the sentences may be reworded.
+
 ## For agents and scripts
 
 `--json` prints the whole report — every panel's box before and after, its factor, the occupancy, the
-gutters, the guides, the notes — instead of the table:
+gutters, the guides, and the notes as `{"code": …, "message": …, …}` records — instead of the table:
 
 ```sh
 plotplate optimize figures/figure_1 --dry-run --json
@@ -86,6 +105,13 @@ plotplate optimize figures/figure_1 --dry-run --json
 
 `--dry-run` writes nothing, so an agent can propose a change, show the numbers, and only then write
 it.
+`--as NAME` writes `layout.NAME.yaml`, which is how several attempts end up side by side in the folder
+for `plotplate view` to switch between:
+
+```sh
+plotplate optimize figures/figure_1 --max-stretch 1.1 --as careful
+plotplate optimize figures/figure_1 --max-stretch 1.6 --as bold
+```
 
 ## How it works
 

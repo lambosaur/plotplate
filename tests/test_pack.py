@@ -9,6 +9,7 @@ from plotplate.cli import main
 from plotplate.config import dump_yaml, load_yaml
 from plotplate.geometry import Rect
 from plotplate.pack import PackError, Target, optimize, read_grid
+from plotplate.variants import find_layouts
 
 RAGGED = {
     "schema": 1,
@@ -94,7 +95,8 @@ def test_no_distortion_allowed_keeps_the_panels_and_narrows_the_figure(ragged):
     for name in report.after:
         assert report.factors(name) == pytest.approx((1.0, 1.0), abs=0.01)
     assert report.width < 183  # it no longer fills the column, and the report says why
-    assert any("could not keep its width" in note for note in report.notes)
+    assert "size-bent" in [note.code for note in report.notes]
+    assert any("could not keep its width" in note.message for note in report.notes)
 
 
 def test_a_frozen_panel_keeps_its_size(ragged):
@@ -137,6 +139,9 @@ def test_the_stretch_is_chosen_when_it_is_not_given(ragged):
 
     tighter = optimize(ragged, Target(gap=4.0, stretch=report.stretch - 0.1))[1]
     assert tighter.notes, "a smaller limit leaves something on the table, and says so"
+    slack = next(note for note in tighter.notes if note.code == "row-slack")
+    assert slack.as_dict()["spare_mm"] > 0  # a code and numbers, not only a sentence
+    assert slack.as_dict()["panels"] and slack.as_dict()["fills_at"] > tighter.stretch
 
 
 def test_a_limit_that_cannot_work_names_one_that_can(ragged):
@@ -166,3 +171,18 @@ def test_json_output_is_machine_readable(ragged, capsys):
     assert set(payload["panels"]) == {"A", "B", "C", "D"}
     assert payload["panels"]["A"]["factor"][0] >= 1.0
     assert payload["occupancy"]["after"] > payload["occupancy"]["before"]
+
+
+def test_cli_names_the_variant_it_writes(ragged, tmp_path):
+    """`--as tight` writes layout.tight.yaml, so several attempts sit side by side."""
+    assert main(["optimize", str(tmp_path), "--as", "tight", "--max-stretch", "1.3"]) == 0
+    assert (tmp_path / "layout.tight.yaml").exists()
+    assert "tight" in find_layouts(tmp_path)
+
+
+def test_cli_json_reports_notes_as_records(ragged, tmp_path, capsys):
+    """An agent reads the codes; a person reads the same sentence in the table."""
+    assert main(["optimize", str(tmp_path), "--max-stretch", "1.02", "--json", "--dry-run"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["notes"] and all({"code", "message"} <= set(n) for n in report["notes"])
+    assert any(n["code"] == "row-slack" and n["spare_mm"] > 0 for n in report["notes"])
