@@ -176,6 +176,21 @@ The preview is the figure file itself, without page margins.
 `plotplate preview layout.yaml --page a4` also writes `preview-page.pdf/png`: the figure centred on a
 page with a caption and placeholder text.
 
+### Look at it while you work
+
+```sh
+plotplate view layout.yaml          # http://127.0.0.1:8765, Ctrl-C to stop
+```
+
+A local page shows the composed figure with the layout drawn over it: panel boxes and letters, axes
+rectangles, guides, alignment rules and the measured geometry, each one toggleable, plus the current
+checks.
+It re-reads the files on every request, so a `plotplate build` in another terminal appears within a
+second, which makes it a good second screen while editing panel code.
+
+It is read-only: edit `layout.yaml`, or move boxes through `plotplate svg-export` / `svg-import`.
+It binds to 127.0.0.1 and uses only the Python standard library.
+
 ### Does it line up?
 
 ```sh

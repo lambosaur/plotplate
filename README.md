@@ -179,6 +179,7 @@ Seaborn clustermaps, Marsilea heatmaps, gridspecs and panels combining several o
 ## Step 3: assemble and deliver
 
 ```sh
+plotplate view fig1/layout.yaml                           # look at it: boxes, axes, guides, checks, live
 plotplate build fig1/layout.yaml                          # run all panel notebooks, preview, LaTeX snippet, checks
 plotplate align fig1/layout.yaml                          # do the panels line up? (millimetres, not eyeballing)
 plotplate preview fig1/layout.yaml --page a4 --rules      # the figure on a page, with the alignment lines drawn
@@ -223,6 +224,7 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 | `plotplate merge` / `plotplate tidy` / `plotplate svg-export` / `plotplate resolve` / `plotplate relabel` | adjust a layout |
 | `plotplate diff` | compare two layouts: moved, merged, split, added, removed, with a revision plan |
 | `plotplate validate` / `plotplate wireframe` / `plotplate align` / `plotplate features` | inspect a layout, check alignment, list measurable features |
+| `plotplate view` | local page showing the figure with its layout drawn on top |
 | `plotplate build` | run panel notebooks, then preview, LaTeX and checks |
 | `plotplate preview` / `plotplate latex` / `plotplate check` | individual build steps |
 | `plotplate bundle` / `plotplate export` | deliver to Overleaf or to a journal |

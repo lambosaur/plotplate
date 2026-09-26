@@ -596,6 +596,13 @@ def cmd_features(args: argparse.Namespace) -> int:
     return _print_issues(issues)
 
 
+def cmd_view(args: argparse.Namespace) -> int:
+    from .view import serve
+
+    serve(args.layout, host=args.host, port=args.port, open_browser=not args.no_browser)
+    return 0
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     from .render import panel_status
 
@@ -883,6 +890,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--near", type=float, default=1.0, help="mm; without rules, report features this close"
     )
+
+    p = add("view", cmd_view, "Serve a local page showing the figure with its layout on top.")
+    p.add_argument("layout")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--no-browser", action="store_true", help="do not open a browser")
 
     p = add("check", cmd_check, "Check layout and saved panel files (sizes, reports).")
     p.add_argument("layout")
