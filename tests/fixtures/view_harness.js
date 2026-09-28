@@ -161,12 +161,27 @@ setImmediate(async () => {
   pointer("pointerdown", mm(40, 30));                 // select A and lock it
   el("f-lock").checked = true;
   el("f-lock").fire("change");
-  check("locking clears the selection", el("f-x").disabled || !el("picked").innerHTML.match(/<b>A/));
+  check("it stays selected while locked", el("picked").innerHTML.includes("<b>A"));
+  check("its fields are read-only", el("f-x").disabled === true);
   const before = boxes().A.join();
   pointer("pointerdown", mm(40, 30));                 // ... and now it cannot be dragged
   pointer("pointermove", mm(52, 38));
   pointer("pointerup", mm(52, 38));
   check("a locked panel does not move", boxes().A.join() === before);
+  check("clicking it selects it again, which is how it is unlocked",
+        el("picked").innerHTML.includes("<b>A") && el("f-lock").checked === true);
+  pointer("pointerdown", mm(40, 30));                 // a click on a locked panel must not
+  pointer("pointermove", mm(40, 30));                 // fall through to whatever is under it
+  pointer("pointerup", mm(40, 30));
+  check("nothing under it is dragged instead", boxes().B.join() === "93.5,0,89.5,62");
+  el("f-lock").checked = false;                       // unlock it from the same panel
+  el("f-lock").fire("change");
+  pointer("pointerdown", mm(40, 30));
+  pointer("pointermove", mm(44, 30));
+  pointer("pointerup", mm(44, 30));
+  check("unlocked, it moves again", boxes().A[0] === 6);  // it was at 2, dragged 4 mm right
+  el("f-lock").checked = true;                        // lock it again for what follows
+  el("f-lock").fire("change");
   check("a locked panel is drawn differently",
         el("paper").rects().some(r => r.attrs["data-panel"] === "A"
                                       && r.attrs["stroke-dasharray"] !== "none"));

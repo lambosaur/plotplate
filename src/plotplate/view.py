@@ -307,11 +307,13 @@ function grab(at) {
   }
   const inside = panelsNow().filter(p => {
     const r = boxOf(p);
-    return !lockedOf(p)
-      && at[0] >= r[0] && at[0] <= r[0] + r[2] && at[1] >= r[1] && at[1] <= r[1] + r[3];
+    return at[0] >= r[0] && at[0] <= r[0] + r[2] && at[1] >= r[1] && at[1] <= r[1] + r[3];
   }).sort((a, b) => boxOf(a)[2] * boxOf(a)[3] - boxOf(b)[2] * boxOf(b)[3]);
   if (!inside.length) return null;
-  return {name: inside[0].name, mode: "move", rect: boxOf(inside[0]), at};
+  // A locked panel can still be picked -- that is how it gets unlocked again -- but picking
+  // it is all that happens: no move, no resize, and no grabbing the panel underneath it.
+  const mode = lockedOf(inside[0]) ? "select" : "move";
+  return {name: inside[0].name, mode, rect: boxOf(inside[0]), at};
 }
 
 // Every edge a dragged edge may stick to: the figure, the guides, the other panels -- and,
@@ -603,7 +605,7 @@ function render() {
   for (const input of el("panels").querySelectorAll("input[data-lock]"))
     input.addEventListener("change", () => {
       locks[input.dataset.lock] = input.checked;
-      if (input.checked && picked === input.dataset.lock) picked = null;
+      picked = input.dataset.lock;  // stays selected, so the same click can undo it
       renderEdit();
       draw();
     });
@@ -715,7 +717,7 @@ for (const input of document.querySelectorAll("#side > label input"))
 el("paper").addEventListener("pointerdown", ev => {
   if (!editing()) return;
   const got = grab(atEvent(ev));
-  drag = got;
+  drag = got && got.mode !== "select" ? got : null;
   picked = got && got.mode !== "guide" ? got.name : null;
   pickedGuide = got && got.mode === "guide" ? {axis: got.axis, index: got.index} : null;
   if (got) el("paper").setPointerCapture(ev.pointerId);
