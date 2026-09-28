@@ -223,3 +223,56 @@ def test_the_optimize_section_is_read_once_for_every_caller(tmp_path):
     target = Target.from_layout(pp.Layout.load(tmp_path / "layout.yaml"))
     assert (target.gap, target.stretch, target.height) == (3.0, 1.3, 140.0)
     assert (target.freeze, target.keep_aspect, target.limits) == (("A",), ("C",), {"B": 1.05})
+
+
+BAND = {
+    "schema": 1,
+    "name": "band",
+    "area": {"width": 183, "height": 120},
+    "panels": {
+        "A": {"box": [0, 0, 60, 50]},
+        "B": {"box": [120, 0, 63, 50]},
+        "C": {"box": [0, 60, 183, 50]},  # already spans the whole width, guides included
+    },
+}
+
+
+def test_page_guides_stop_the_panels_growing_across_them():
+    """Two guides with a blank band between them keep it blank: they are hard stops."""
+    free = optimize(pp.Layout(dict(BAND)), Target(gap=4.0))[1]
+    assert free.after["A"].right > 70 and free.after["B"].left < 110  # without them, it fills
+
+    held, report = optimize(
+        pp.Layout({**BAND, "page_guides": {"x": [70, 110], "y": []}}), Target(gap=4.0)
+    )
+    assert report.after["A"].right == pytest.approx(70, abs=0.01)
+    assert report.after["B"].left == pytest.approx(110, abs=0.01)
+    assert report.after["C"].w == pytest.approx(183, abs=0.01)  # what already spanned still does
+    assert [note.code for note in report.notes] == ["guides-held"]
+    assert held["page_guides"] == {"x": [70, 110], "y": []}  # and they are kept in the result
+
+
+def test_the_band_between_two_guides_is_not_treated_as_a_gutter():
+    """Held-open space is not something a bigger limit could fill, so no note says it is."""
+    _data, report = optimize(
+        pp.Layout({**BAND, "page_guides": {"x": [70, 110], "y": []}}), Target(gap=4.0)
+    )
+    assert report.stretch < 2.0  # the automatic search stops instead of chasing the band
+    assert not [note for note in report.notes if note.code == "row-slack"]
+
+
+def test_a_guide_on_or_outside_the_figure_edge_is_not_a_constraint():
+    """A margin guide, or one left behind by a narrower target, stops nothing new."""
+    _data, report = optimize(
+        pp.Layout({**BAND, "page_guides": {"x": [0, 183, 260], "y": [0, 247]}}),
+        Target(gap=4.0, width=160.0),
+    )
+    assert report.width == pytest.approx(160, abs=0.01)
+    assert not [note for note in report.notes if note.code == "guides-held"]
+
+
+def test_a_horizontal_guide_holds_a_row_apart():
+    _data, report = optimize(
+        pp.Layout({**BAND, "page_guides": {"x": [], "y": [56]}}), Target(gap=4.0, height=120.0)
+    )
+    assert report.after["A"].bottom <= 56.01 and report.after["C"].top >= 55.99

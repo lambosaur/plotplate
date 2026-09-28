@@ -34,7 +34,7 @@ They are not:
 | line | drawn | comes from | what it does |
 | --- | --- | --- | --- |
 | axis guide | inside the figure, dashed grey | `guides:` | an axes edge can *be* it (`bottom: row1_bottom`) |
-| page guide | across the whole sheet, blue | `page_guides:` | nothing is placed against it; panels stick to it while you drag |
+| page guide | across the whole sheet, blue | `page_guides:` | nothing is placed against it; panels stick to it while you drag, and `optimize` will not grow one across it |
 | alignment rule | inside the figure, dashed red | `alignment.yaml` + what the panels measured | it reports whether things really did line up |
 
 A guide and a rule over the same line look identical **while everything is in order**, and that is the

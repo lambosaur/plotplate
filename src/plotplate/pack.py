@@ -208,6 +208,7 @@ def fill_white_space(
     gap: float,
     stretch: float,
     limits: dict[str, float] | None = None,
+    barriers: dict[str, list[float]] | None = None,
 ) -> dict[str, Rect]:
     """Grow every panel into the white space beside it, within the stretch limit.
 
@@ -221,7 +222,8 @@ def fill_white_space(
     inside a box, because it moves shared boundaries and never changes which cells a panel
     covers.
 
-    ``limits`` overrides ``stretch`` for the panels named in it.
+    ``limits`` overrides ``stretch`` for the panels named in it. ``barriers`` are page guides:
+    a panel never grows across one it does not already cross.
     """
     filled = {}
     for name, rect in boxes.items():
@@ -232,6 +234,9 @@ def fill_white_space(
             low, high = (rect.left, rect.right) if axis == "x" else (rect.top, rect.bottom)
             start = (max(before) + low) / 2 + gap / 2 if before else 0.0
             end = (min(after) + high) / 2 - gap / 2 if after else limit
+            walls = (barriers or {}).get(axis) or []
+            start = max([start, *(w for w in walls if w <= low + 1e-6)])
+            end = min([end, *(w for w in walls if w >= high - 1e-6)])
             grow = [max(0.0, low - start), max(0.0, end - high)]
             allowed = (high - low) * ((limits or {}).get(name, stretch) - 1)
             asked = sum(grow)
@@ -379,8 +384,25 @@ def _require(solver: Solver, constraint: Any) -> None:
         raise PackError(f"these limits cannot all hold at once ({exc})") from exc
 
 
+def _reserved(grid: Grid, axis: str, barriers: dict[str, list[float]]) -> set[int]:
+    """Strips held open between two page guides, which are neither gutters nor panels.
+
+    Two guides with nothing between them are a band the author reserved -- for a legend, a
+    label column, or simply air. Closing it to one gutter would be the opposite of what they
+    are for, so such a strip keeps the width it has.
+    """
+    edges = grid.boundaries(axis)
+    walls = barriers.get(axis) or []
+    on_guide = [any(abs(edge - wall) < 1e-6 for wall in walls) for edge in edges]
+    return {i for i in range(len(edges) - 1) if on_guide[i] and on_guide[i + 1]}
+
+
 def _strip_variables(
-    solver: Solver, grid: Grid, target: Target, scale: dict[str, Variable]
+    solver: Solver,
+    grid: Grid,
+    target: Target,
+    scale: dict[str, Variable],
+    barriers: dict[str, list[float]] | None = None,
 ) -> dict[str, list[Variable]]:
     """One variable per strip: gutters fixed at the gap, panel strips sharing one scale."""
     strips: dict[str, list[Variable]] = {}
@@ -389,8 +411,11 @@ def _strip_variables(
         bands = grid.strips(axis)
         variables = [Variable(f"{axis}{i}") for i in range(len(bands))]
         strips[axis] = variables
-        for variable, (size, gutter) in zip(variables, bands, strict=True):
-            if gutter:
+        held = _reserved(grid, axis, barriers or {})
+        for index, (variable, (size, gutter)) in enumerate(zip(variables, bands, strict=True)):
+            if index in held:
+                _require(solver, variable == size)
+            elif gutter:
                 _require(solver, variable == target.gap)
             else:
                 _require(solver, variable >= MIN_STRIP_MM)
@@ -467,11 +492,51 @@ def _reachable(grid: Grid, target: Target, current_width: float) -> tuple[Target
     return replace(target, width=totals["x"], height=totals["y"]), notes
 
 
-def _solve(grid: Grid, limits: dict[str, Rect], target: Target) -> dict[str, list[float]]:
+def _hold_barriers(
+    solver: Solver, grid: Grid, strips: dict[str, list[Variable]], barriers: dict[str, list[float]]
+) -> list[tuple[str, float]]:
+    """Keep every page guide on the side of the panels it already separates.
+
+    A guide is a hard stop: whatever is left of it stays left of it, and the white space it
+    holds open stays open. The guide sits inside one strip of the grid (it cannot sit inside a
+    panel, because the fill step never grows one across it), and it is enough to keep that
+    strip's two ends on either side of it -- which, when the guide sits exactly on a shared
+    edge, pins that edge.
+
+    Returns the guides that were applied, as ``(axis, position)``.
+    """
+    held = []
+    for axis in AXES:
+        edges = grid.boundaries(axis)
+        # Boundary j is at the sum of the strips before it; boundary 0 is the origin.
+        positions = [None] + [_expression(strips[axis][: j + 1]) for j in range(len(strips[axis]))]
+        for guide in barriers.get(axis) or []:
+            if not edges[0] < guide < edges[-1]:
+                continue  # outside the figure: its own edges are the stop there
+            # A panel that already spans the guide (a full-width one under a gap, say) keeps
+            # spanning it: the constraint is on the shared edges, so it holds back exactly the
+            # panels that end beside the guide, which is what a hard stop means.
+            after = next(j for j, edge in enumerate(edges) if edge >= guide - 1e-6)
+            before = after - 1 if edges[after] > guide + 1e-6 else after
+            if before > 0:
+                _require(solver, positions[before] <= guide)
+            if after < len(edges) - 1:
+                _require(solver, positions[after] >= guide)
+            held.append((axis, guide))
+    return held
+
+
+def _solve(
+    grid: Grid,
+    limits: dict[str, Rect],
+    target: Target,
+    barriers: dict[str, list[float]] | None = None,
+) -> tuple[dict[str, list[float]], list[tuple[str, float]]]:
     """New boundary positions along each axis, with the limits measured against ``limits``."""
     solver = Solver()
     scale = {axis: Variable(f"scale.{axis}") for axis in AXES}
-    strips = _strip_variables(solver, grid, target, scale)
+    strips = _strip_variables(solver, grid, target, scale, barriers)
+    held = _hold_barriers(solver, grid, strips, barriers or {})
     if target.height is None:
         # Nothing pins the height: follow the width, so the figure keeps its proportions.
         solver.addConstraint((scale["y"] == scale["x"]) | "strong")
@@ -487,7 +552,7 @@ def _solve(grid: Grid, limits: dict[str, Rect], target: Target) -> dict[str, lis
         for variable in strips[axis]:
             edges.append(edges[-1] + variable.value())
         positions[axis] = [round(value, 3) for value in edges]
-    return positions
+    return positions, held
 
 
 def _map_value(value: float, old: tuple[float, float], new: tuple[float, float]) -> float:
@@ -616,13 +681,21 @@ def _rows(grid: Grid) -> list[tuple[int, int]]:
 
 
 def _row_slack(
-    boxes: dict[str, Rect], grid: Grid, positions: dict[str, list[float]], width: float, gap: float
+    boxes: dict[str, Rect],
+    grid: Grid,
+    positions: dict[str, list[float]],
+    width: float,
+    gap: float,
+    reserved: float = 0.0,
 ) -> list[tuple[float, float, float, list[str]]]:
     """Rows with width to spare: ``(top, bottom, empty mm, the panels in the row)``.
 
     A row keeps empty space when its panels are not allowed to grow enough to fill the width.
     That is the stretch limit doing its job -- how much distortion is acceptable is the user's
     call -- so the result is reported, not silently worked around.
+
+    ``reserved`` is the width held open between page guides, which is empty on purpose and is
+    therefore not something a bigger limit could ever fill.
     """
     rows = []
     for first, last in _rows(grid):
@@ -635,7 +708,7 @@ def _row_slack(
         if not inside:
             continue
         covered = _union_length([(box.left, box.right) for _name, box in inside])
-        empty = width - covered - gap * (len(inside) - 1)
+        empty = width - covered - gap * (len(inside) - 1) - reserved
         if empty > 1.0:
             rows.append((top, bottom, empty, sorted(name for name, _box in inside)))
     return rows
@@ -681,6 +754,7 @@ class Arrangement:
     filled: dict[str, Rect]  # the boxes after growing into the white space, before solving
     target: Target  # the target as it was actually reached
     notes: list[Note]
+    reserved: float = 0.0  # width held open between page guides
 
     @property
     def size(self) -> tuple[float, float]:
@@ -688,8 +762,23 @@ class Arrangement:
         return self.positions["x"][-1], self.positions["y"][-1]
 
     def slack(self) -> list[tuple[float, float, float, list[str]]]:
-        """Rows that still have width to spare."""
-        return _row_slack(self.boxes, self.grid, self.positions, self.size[0], self.target.gap)
+        """Rows that still have width to spare, the bands held open by guides aside."""
+        return _row_slack(
+            self.boxes, self.grid, self.positions, self.size[0], self.target.gap, self.reserved
+        )
+
+
+def _barriers(layout: Layout, target: Target) -> dict[str, list[float]]:
+    """The page guides that act as hard stops, which is the ones inside the figure.
+
+    A guide on the figure's own edge, or outside it (one left behind by a narrower target
+    width, or a margin of the sheet), stops nothing that the figure's edges do not already
+    stop, so it is left out rather than turned into a constraint that can only fail.
+    """
+    size = {"x": target.width or layout.width, "y": target.height or layout.height}
+    return {
+        axis: [g for g in layout.page_guides.get(axis) or [] if 0 < g < size[axis]] for axis in AXES
+    }
 
 
 def _arrange(layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: float) -> Arrangement:
@@ -699,8 +788,11 @@ def _arrange(layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: 
         PackError: the boxes are not a grid, or the target cannot be reached.
     """
     stretch = target.stretch if target.stretch is not None else 1.0
+    barriers = _barriers(layout, target)
     filled = (
-        fill_white_space(boxes, layout.width, layout.height, target.gap, stretch, target.limits)
+        fill_white_space(
+            boxes, layout.width, layout.height, target.gap, stretch, target.limits, barriers
+        )
         if target.fill
         else boxes
     )
@@ -710,7 +802,16 @@ def _arrange(layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: 
         raise PackError(f"these panels are not placed by the layout: {sorted(unknown)}")
 
     reached, notes = _reachable(grid, target, layout.width)
-    positions = _solve(grid, boxes, reached)
+    positions, held = _solve(grid, boxes, reached, barriers)
+    if held:
+        notes.append(
+            Note(
+                "guides-held",
+                "page guides kept as hard stops, so the space they hold open stayed open: "
+                + ", ".join(f"{axis}={value:g}" for axis, value in held),
+                {"guides": [{"axis": axis, "mm": value} for axis, value in held]},
+            )
+        )
     new_boxes: dict[str, Rect] = {}
     for name in grid.spans:
         i0, i1 = grid.span(name, "x")
@@ -720,7 +821,8 @@ def _arrange(layout: Layout, boxes: dict[str, Rect], target: Target, tolerance: 
         )
     for name, host in grid.insets.items():  # an inset keeps its place inside its host
         new_boxes[name] = _map_axes(filled[host], new_boxes[host], [boxes[name]])[0]
-    return Arrangement(grid, positions, new_boxes, filled, reached, notes)
+    reserved = sum(positions["x"][i + 1] - positions["x"][i] for i in _reserved(grid, "x", barriers))
+    return Arrangement(grid, positions, new_boxes, filled, reached, notes, reserved)
 
 
 def _choose_stretch(
@@ -747,9 +849,11 @@ def _choose_stretch(
             factor += STRETCH_STEP
             continue
         best = arranged
+        factor = round(factor, 2)
         # Good enough: every row fills the width, and nothing had to give (a figure that had
-        # to become narrower to fit its own panels is not what was asked for).
-        if not arranged.slack() and not arranged.notes:
+        # to become narrower to fit its own panels is not what was asked for). A guide holding
+        # space open is not something a bigger limit could fix, so it does not count here.
+        if not arranged.slack() and not [n for n in arranged.notes if n.code != "guides-held"]:
             return factor, arranged
         factor += STRETCH_STEP
     if best is None:

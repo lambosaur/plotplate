@@ -687,7 +687,7 @@ async function arrange() {
   try {
     const answer = await (await fetch("optimize", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({layout: active, panels: draft,
+      body: JSON.stringify({layout: active, panels: draft, page_guides: rulers,
                             locked: panelsNow().filter(lockedOf).map(p => p.name)}),
     })).json();
     if (answer.error) {
@@ -1244,7 +1244,11 @@ class Viewer:
             }
 
     def arrange(
-        self, key: str | None, boxes: dict[str, Any], locked: list[str] | None = None
+        self,
+        key: str | None,
+        boxes: dict[str, Any],
+        locked: list[str] | None = None,
+        guides: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """What ``plotplate optimize`` makes of the boxes currently on the page.
 
@@ -1268,6 +1272,8 @@ class Viewer:
         new = {**old, **{name: _checked_rect(name, value) for name, value in boxes.items()}}
         new = bring_inside(new, layout.width, layout.height)
         data = layout.resolved()
+        if guides is not None:  # the guides on the page, which may not be saved yet
+            data["page_guides"] = _checked_guides(guides)
         place_boxes(data, layout, old, new)
         # The same file path as the layout it came from: style files, journal presets and panel
         # files are all resolved relative to it, and a draft that forgot where it lives cannot
@@ -1355,7 +1361,12 @@ class _Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
             panels = dict(payload.get("panels") or {})
             if route == "optimize":
-                answer = self.viewer.arrange(payload.get("layout"), panels)
+                answer = self.viewer.arrange(
+                    payload.get("layout"),
+                    panels,
+                    payload.get("locked"),
+                    payload.get("page_guides"),
+                )
             else:
                 variant = str(payload.get("variant") or "custom")
                 saved = self.viewer.save(

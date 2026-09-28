@@ -122,8 +122,10 @@ page_guides:            # layout millimetres, like everything else
   y: [62, 128]          # two horizontal ones
 ```
 
-Scaffolding for the author, and the one thing in the file that changes nothing: no axes can be placed
-against a page guide, and deleting one moves no panel.
+Scaffolding for the author: no axes is ever placed against a page guide, and deleting one moves no
+panel.
+What it does do is stop `plotplate optimize` — panels never grow across a page guide, and a band
+between two of them stays open ([optimize.md](optimize.md#page-guides-are-hard-stops)).
 `plotplate view` draws them across the whole sheet, margins included (the way a guide dragged off a
 ruler behaves in a drawing program), and panels stick to them while being dragged, which is what they
 are for: putting two panels in different rows on the same line.

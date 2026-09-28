@@ -75,6 +75,25 @@ visible in a diff, and is something an agent can edit.
 The flags (`--gap`, `--max-stretch`, `--freeze`, `--keep-aspect`) override it for one run, for trying
 something out.
 
+## Page guides are hard stops
+
+A [page guide](layout-spec.md#page-guides) is a line the optimizer will not move a panel across:
+
+- a panel that ends beside a guide may grow up to it, and no further;
+- two guides with nothing between them hold that band open — it is reserved space (a legend, a label
+  column, air), not a gutter to be closed, so it keeps its width while everything else is re-spent;
+- a panel that *already* spans a guide keeps spanning it: the stop applies to the shared edges, which
+  is what holds back the panels beside the guide;
+- a guide on the figure's own edge, or outside it — a margin of the sheet, or one left behind by a
+  narrower `--width` — constrains nothing, because the figure's edges already do.
+
+The report says which guides held (`guides-held`), and the space they keep open is not counted as a
+row that could have been filled, so it never asks for a bigger `--max-stretch` to chase space that is
+empty on purpose.
+
+In `plotplate view --edit`, **arrange** uses the guides as they are on the page, before they are
+saved: drag a guide, press arrange, see it hold.
+
 ## Notes
 
 A note is the one thing the numbers do not say by themselves.
@@ -86,6 +105,7 @@ behind the sentence, so a script does not have to read English:
 | `row-slack` | a row could not fill the width, because its panels reached their limit | `row`, `panels`, `top_mm`, `bottom_mm`, `spare_mm`, `stretch`, `fills_at` |
 | `size-bent` | the figure had to become narrower or shorter to keep its panels | `axis`, `requested_mm`, `reason` |
 | `guides-broken` | shared axes edges no longer line up after the change | `lost`, `before`, `after` |
+| `guides-held` | page guides stopped the panels growing across them | `guides` (axis and position of each) |
 | `insets-kept` | a nested panel rode along inside its host | `insets` |
 | `nothing-gained` | the panels already used the space | — |
 

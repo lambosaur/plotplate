@@ -354,3 +354,16 @@ def test_arrange_reads_the_styles_of_the_layout_it_came_from(tmp_path):
     )
     answer = Viewer(figure, "a4", editable=True).arrange(None, {"A": [0, 0, 80, 55]})
     assert set(answer["panels"]) == {"A", "B"}
+
+
+def test_arrange_respects_the_guides_on_the_page_before_they_are_saved(editable):
+    """Drag a guide, press arrange: the guide you are looking at is the one that holds."""
+    base, layout = editable
+    wide = {name: [*spec.box.to_list()] for name, spec in layout.panels.items()}
+    answer = post(
+        base + "optimize",
+        {"panels": wide, "page_guides": {"x": [layout.width / 2 - 10], "y": []}},
+    )
+    for box in answer["panels"].values():
+        crosses = box[0] < layout.width / 2 - 10.01 and box[0] + box[2] > layout.width / 2 - 9.99
+        assert not crosses or box[0] == 0  # only something already spanning it still does
