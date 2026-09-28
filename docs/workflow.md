@@ -258,10 +258,23 @@ With it, panel boxes can be moved and resized:
   its box exactly;
 - axes follow their panel the same way `plotplate optimize` moves them: the margins that hold tick
   labels keep their millimetres, and the plotting area takes the rest;
-- **+ |** and **+ –** add a page guide, which you then drag anywhere on the sheet (delete removes the
-  selected one).
+- **+ |** and **+ –** add a page guide, which you then drag anywhere on the sheet.
+  `Delete` removes the selected one, and so does dragging it off the sheet.
   Panels stick to page guides, which is how two panels in different rows are put on the same line;
-  they are saved with the layout ([layout-spec.md](layout-spec.md#page-guides));
+  they are saved with the layout ([layout-spec.md](layout-spec.md#page-guides)).
+  A layout that declares none starts with four: the margins of the sheet;
+- **locked** (in the edit box, or the checkbox beside each panel in the list) makes a panel refuse to
+  be dragged, resized or nudged, and makes *arrange* keep its size.
+  It can still be clicked — that is how it gets unlocked — and clicking it never grabs whatever sits
+  under it.
+  It is stored as `optimize: {panels: {A: {freeze: true}}}`, so the page's lock and the optimizer's
+  promise are one thing;
+- **+ panel** draws one more box, named after the next free letter: enough to sketch a whole figure
+  before any of it is written.
+  **letter** changes what the reader sees; **name** changes the panel's identity, which is also the
+  name of `panels/A.pdf` and of the code that draws it.
+  Renaming a panel that has already been drawn is refused, naming the files it would orphan — use
+  `plotplate merge <layout> A --as S1` and rename the panel code, or change only the letter;
 - **arrange** runs the optimizer on what is currently on the page: panels dragged off the figure are
   put back, gutters are evened out, and the white space goes back to the panels.
   Nothing is written — the result arrives as another edit, so it can be nudged further, reverted, or
