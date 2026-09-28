@@ -129,6 +129,8 @@ PAGE = """<!doctype html>
       <button id="arrange" title="even the gutters and spend the white space">arrange</button>
     </div>
     <div class="row">
+      <button id="undo" title="ctrl-Z">undo</button>
+      <button id="redo" title="ctrl-shift-Z">redo</button>
       <button id="save">save</button><button id="revert">revert</button>
       <span class="mm" id="saved"></span>
     </div>
@@ -148,7 +150,8 @@ const COLORS = ["#7c3aed", "#0891b2", "#be185d", "#4d7c0f", "#b45309"];
 let stamp = null, state = null, active = null, compare = new Set(), hover = null;
 let ppm = null;  // pixels per millimetre; null = fit the stage
 let draft = {}, picked = null, drag = null;  // editing: boxes moved but not saved yet
-let rulers = null, pickedGuide = null, movedGuides = false;  // the page guides being edited
+let rulers = null, pickedGuide = null;  // the page guides being edited
+let past = [], future = [], pending = null;  // what undo and redo go back and forth over
 let locks = {}, letters = {}, renames = {}, extra = {};  // per panel, unsaved like the boxes
 let originMM = [0, 0], viewMM = [210, 297];  // what draw() last put in the viewBox
 // How close an edge has to come to stick: about five screen pixels, so it feels the same
@@ -157,7 +160,12 @@ const snapMM = () => Math.max(0.75, 5 * viewMM[0] / el("paper").getBoundingClien
 const el = id => document.getElementById(id);
 const on = id => el(id).checked;
 const editing = () => !!(state && state.editable && !state.error);
-const dirty = () => movedGuides
+// The guides are compared with the file rather than flagged, so that undo brings the flag
+// back with the values, and so that moving a guide back where it was stops counting as a change.
+const guidesMoved = () => !!state && !!rulers
+  && JSON.stringify(rulers) !== JSON.stringify({x: (state.page_guides || {}).x || [],
+                                                y: (state.page_guides || {}).y || []});
+const dirty = () => guidesMoved()
   || [draft, locks, letters, renames, extra].some(held => Object.keys(held).length > 0);
 const boxOf = p => draft[p.name] || p.box;
 const lockedOf = p => (locks[p.name] === undefined ? !!p.locked : locks[p.name]);
@@ -380,6 +388,42 @@ function moved(at, free) {
 
 const round2 = r => r.map(v => Math.round(v * 100) / 100);
 
+// Undo works on snapshots of everything the page holds, which is a few numbers per panel:
+// cheaper than recording what each action did, and it cannot drift from the real state.
+// The depth is a courtesy; one step back would have been the same code.
+const HISTORY = 50;
+
+function snapshot() {
+  return JSON.stringify({draft, locks, letters, renames, extra, rulers});
+}
+
+function remember() {  // call before changing anything
+  past.push(snapshot());
+  if (past.length > HISTORY) past.shift();
+  future = [];
+}
+
+function restore(shot) {
+  const held = JSON.parse(shot);
+  ({draft, locks, letters, renames, extra, rulers} = held);
+  if (picked && !panelsNow().some(p => p.name === picked)) picked = null;
+  if (pickedGuide && (rulers[pickedGuide.axis] || []).length <= pickedGuide.index)
+    pickedGuide = null;
+  render();
+}
+
+function undo() {
+  if (!past.length) return;
+  future.push(snapshot());
+  restore(past.pop());
+}
+
+function redo() {
+  if (!future.length) return;
+  past.push(snapshot());
+  restore(future.pop());
+}
+
 function edit(name, rect) {
   if (extra[name]) extra[name] = round2(rect);
   else draft[name] = round2(rect);
@@ -389,23 +433,23 @@ function edit(name, rect) {
 
 function editGuide(axis, index, value) {
   rulers[axis][index] = Math.round(value * 100) / 100;
-  movedGuides = true;
   renderEdit();
   draw();
 }
 
 function addGuide(axis) {
+  remember();
   if (!rulers) rulers = {x: [], y: []};
   rulers[axis].push(Math.round((axis === "x" ? state.width : state.height) / 2 * 100) / 100);
   pickedGuide = {axis, index: rulers[axis].length - 1};
   picked = null;
-  movedGuides = true;
   renderEdit();
   draw();
 }
 
 // A free-ish spot for one more panel: under everything drawn so far, or the middle.
 function addPanel() {
+  remember();
   const taken = new Set(panelsNow().map(p => p.name));
   const letter = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].find(one => !taken.has(one))
     || "P" + (taken.size + 1);
@@ -421,10 +465,10 @@ function addPanel() {
   render();
 }
 
-function dropGuide() {
+function dropGuide(record = true) {
+  if (record) remember();  // dragging one off the sheet already recorded the drag
   rulers[pickedGuide.axis].splice(pickedGuide.index, 1);
   pickedGuide = null;
-  movedGuides = true;
   renderEdit();
   draw();
 }
@@ -493,8 +537,8 @@ function renderEdit() {
   el("edit").hidden = !editing();
   if (!editing()) return;
   el("foot").textContent = "editing: drag, or nudge with the arrow keys; shift ignores the "
-    + "magnets; a locked panel stays put; a guide dragged off the sheet is removed. Saving "
-    + "writes layout.<name>.yaml, never layout.yaml";
+    + "magnets; ctrl-Z undoes, ctrl-shift-Z redoes; a guide dragged off the sheet is removed. "
+    + "Saving writes layout.<name>.yaml, never layout.yaml";
   const panel = panelsNow().find(p => p.name === picked);
   const rect = panel ? boxOf(panel) : null;
   el("picked").innerHTML = panel
@@ -512,6 +556,8 @@ function renderEdit() {
   el("f-letter").value = panel
     ? (letters[panel.name] !== undefined ? letters[panel.name] : (panel.label || "")) : "";
   el("f-lock").checked = panel ? lockedOf(panel) : false;
+  el("undo").disabled = !past.length;
+  el("redo").disabled = !future.length;
   const count = Object.keys(draft).length;
   el("saved").className = "mm" + (dirty() ? " dirty" : "");
   if (dirty())
@@ -544,7 +590,8 @@ function renderVariants() {
       locks = {}; letters = {}; renames = {}; extra = {};
       picked = null;
       pickedGuide = null;
-      movedGuides = false;
+      past = [];
+      future = [];
       refresh(true);
     });
   for (const input of holder.querySelectorAll("input[data-compare]"))
@@ -604,6 +651,7 @@ function render() {
   }));
   for (const input of el("panels").querySelectorAll("input[data-lock]"))
     input.addEventListener("change", () => {
+      remember();
       locks[input.dataset.lock] = input.checked;
       picked = input.dataset.lock;  // stays selected, so the same click can undo it
       renderEdit();
@@ -647,7 +695,8 @@ async function arrange() {
       el("report").textContent = answer.error;
       return;
     }
-    // The result is another edit, not a saved layout: it can be nudged, reverted or saved.
+    // The result is another edit, not a saved layout: it can be nudged, undone or saved.
+    remember();
     for (const [name, rect] of Object.entries(answer.panels)) draft[name] = rect;
     el("report").className = "mm";
     el("report").textContent =
@@ -678,7 +727,8 @@ async function save() {
     }
     draft = {};
     locks = {}; letters = {}; renames = {}; extra = {};
-    movedGuides = false;
+    past = [];
+    future = [];
     picked = null;
     pickedGuide = null;
     active = result.variant;
@@ -701,7 +751,6 @@ async function refresh(force) {
       active = fresh.active;
       rulers = {x: [...((fresh.page_guides || {}).x || [])],
                 y: [...((fresh.page_guides || {}).y || [])]};
-      movedGuides = false;
       render();
     }
   } catch (err) { /* the server went away; keep the last view */ }
@@ -718,6 +767,7 @@ el("paper").addEventListener("pointerdown", ev => {
   if (!editing()) return;
   const got = grab(atEvent(ev));
   drag = got && got.mode !== "select" ? got : null;
+  pending = drag ? snapshot() : null;  // kept only if the drag actually changes something
   picked = got && got.mode !== "guide" ? got.name : null;
   pickedGuide = got && got.mode === "guide" ? {axis: got.axis, index: got.index} : null;
   if (got) el("paper").setPointerCapture(ev.pointerId);
@@ -728,6 +778,13 @@ el("paper").addEventListener("pointermove", ev => {
   if (!drag) return;
   ev.preventDefault();
   const to = moved(atEvent(ev), ev.shiftKey);  // shift: ignore the magnets
+  const was = drag.mode === "guide" ? rulers[drag.axis][drag.index] : drag.rect;
+  if (pending && String(to) !== String(was)) {
+    past.push(pending);  // one undo step for the whole drag, not one per pixel
+    if (past.length > HISTORY) past.shift();
+    future = [];
+    pending = null;
+  }
   if (drag.mode === "guide") editGuide(drag.axis, drag.index, to);
   else edit(drag.name, to);
 });
@@ -740,13 +797,17 @@ el("paper").addEventListener("pointerup", ev => {
              || at[1] < -originMM[1] || at[1] > viewMM[1] - originMM[1];
     if (out) {
       pickedGuide = {axis: drag.axis, index: drag.index};
-      dropGuide();
+      dropGuide(pending !== null);  // one step for the whole gesture
     }
   }
   drag = null;
 });
 document.addEventListener("keydown", ev => {
   if (!editing() || ev.target.tagName === "INPUT") return;
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
+    ev.preventDefault();
+    return ev.shiftKey ? redo() : undo();
+  }
   if (pickedGuide && (ev.key === "Delete" || ev.key === "Backspace")) {
     ev.preventDefault();
     return dropGuide();
@@ -756,6 +817,7 @@ document.addEventListener("keydown", ev => {
   const by = ev.shiftKey ? 2 : 0.5;
   if (pickedGuide) {
     ev.preventDefault();
+    remember();
     const along = pickedGuide.axis === "x" ? step[0] : step[1];
     if (along)
       editGuide(pickedGuide.axis, pickedGuide.index,
@@ -766,6 +828,7 @@ document.addEventListener("keydown", ev => {
   ev.preventDefault();
   const chosen = panelsNow().find(p => p.name === picked);
   if (lockedOf(chosen)) return;
+  remember();
   const rect = boxOf(chosen);
   edit(picked, [rect[0] + step[0] * by, rect[1] + step[1] * by, rect[2], rect[3]]);
 });
@@ -774,21 +837,29 @@ for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries())
     if (!picked) return;
     const rect = boxOf(panelsNow().find(p => p.name === picked)).slice();
     rect[i] = parseFloat(el(key).value);
-    if (!isNaN(rect[i])) edit(picked, rect);
+    if (!isNaN(rect[i])) {
+      remember();
+      edit(picked, rect);
+    }
   });
 el("save").onclick = save;
 el("arrange").onclick = arrange;
+el("undo").onclick = undo;
+el("redo").onclick = redo;
 el("add").onclick = addPanel;
 el("f-key").addEventListener("change", () => {
+  if (picked) remember();
   if (picked) renames[picked] = el("f-key").value.trim();
   renderEdit();
 });
 el("f-letter").addEventListener("change", () => {
+  if (picked) remember();
   if (picked) letters[picked] = el("f-letter").value.trim();
   renderEdit();
   draw();
 });
 el("f-lock").addEventListener("change", () => {
+  if (picked) remember();
   if (picked) locks[picked] = el("f-lock").checked;
   renderEdit();
   render();
@@ -796,12 +867,13 @@ el("f-lock").addEventListener("change", () => {
 el("guide-x").onclick = () => addGuide("x");
 el("guide-y").onclick = () => addGuide("y");
 el("revert").onclick = () => {
+  remember();  // even throwing everything away can be taken back
   draft = {};
   locks = {}; letters = {}; renames = {}; extra = {};
   picked = null;
   pickedGuide = null;
-  movedGuides = false;
   rulers = {x: [...((state.page_guides || {}).x || [])], y: [...((state.page_guides || {}).y || [])]};
+  future = [];
   el("saved").textContent = "";
   el("report").textContent = "";
   renderEdit();

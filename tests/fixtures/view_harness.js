@@ -210,6 +210,38 @@ setImmediate(async () => {
   pointer("pointerup", [105, 320]);
   check("dragging a guide off the sheet removes it", guides().length === kept - 1);
 
+  // --- undo and redo -----------------------------------------------------------------------
+  el("revert").onclick();
+  const start = boxes().B.join();
+  pointer("pointerdown", mm(130, 30));
+  pointer("pointermove", mm(104, 34));
+  pointer("pointerup", mm(104, 34));
+  const dragged = boxes().B.join();
+  check("the drag changed something", dragged !== start);
+  el("undo").onclick();
+  check("undo takes the whole drag back, not one pixel of it", boxes().B.join() === start);
+  el("redo").onclick();
+  check("redo puts it back", boxes().B.join() === dragged);
+  document.handlers.keydown[0]({key: "z", ctrlKey: true, preventDefault: () => {},
+                                target: {tagName: "DIV"}});
+  check("ctrl-Z undoes too", boxes().B.join() === start);
+
+  el("add").onclick();
+  check("the added panel is there", Object.keys(boxes()).length === 4);
+  el("undo").onclick();
+  check("undo removes an added panel", Object.keys(boxes()).length === 3);
+  el("guide-x").onclick();
+  const many = guides().length;
+  el("undo").onclick();
+  check("undo removes an added guide", guides().length === many - 1);
+  for (let step = 0; step < 60; step += 1) el("undo").onclick();  // back to the file itself
+  check("undoing everything empties the history", el("undo").disabled === true);
+  // As far back as the history goes, which is the last save -- not necessarily the file.
+  check("and leaves the boxes where the file has them", boxes().B.join() === "93.5,0,89.5,62"
+        && Object.keys(boxes()).length === 3);
+  el("redo").onclick();
+  check("redo still works after that", el("undo").disabled === false);
+
   // --- arrange -------------------------------------------------------------------------
   pointer("pointerdown", mm(40, 30));                 // lock A again: saving cleared the edits
   el("f-lock").checked = true;

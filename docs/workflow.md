@@ -275,6 +275,9 @@ With it, panel boxes can be moved and resized:
   name of `panels/A.pdf` and of the code that draws it.
   Renaming a panel that has already been drawn is refused, naming the files it would orphan — use
   `plotplate merge <layout> A --as S1` and rename the panel code, or change only the letter;
+- **undo** and **redo** (`ctrl-Z`, `ctrl-shift-Z`) step through everything the page holds — boxes,
+  guides, locks, letters, renames, added panels — and a whole drag counts as one step.
+  The history goes back as far as the last save, and *revert* can itself be undone;
 - **arrange** runs the optimizer on what is currently on the page: panels dragged off the figure are
   put back, gutters are evened out, and the white space goes back to the panels.
   Nothing is written — the result arrives as another edit, so it can be nudged further, reverted, or
