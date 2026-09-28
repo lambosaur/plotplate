@@ -9,9 +9,12 @@ A layout file (YAML) looks like::
     style: {font: {size: 7}}   # inline overrides, applied last
     page: {paper: a4, margins: 25, caption: 25}   # the sheet the figure is printed on
     area: {width: double, height: 150}   # the figure itself: mm, or a journal width name
-    guides:                    # named alignment lines, page coordinates (mm)
+    guides:                    # named alignment lines an axes can be placed against (mm)
       x: {plots_left: 12}
       y: {row1_bottom: 55}
+    page_guides:               # unnamed lines to arrange panels against; drawn across the page
+      x: [91.5]
+      y: [62]
     mosaic:                    # optional shorthand to compute panel boxes
       rows: ["AAB", "CDD"]
       gap: [4, 4]              # [horizontal, vertical] mm
@@ -227,6 +230,15 @@ class Layout:
         self.guides: dict[str, dict[str, float]] = {
             "x": {k: float(v) for k, v in (guides.get("x") or {}).items()},
             "y": {k: float(v) for k, v in (guides.get("y") or {}).items()},
+        }
+        # Page guides are scaffolding for the author, not references: nothing can be placed
+        # against them, so they are plain numbers, they need no names, and dropping one changes
+        # no panel. They are in layout millimetres like everything else, and `plotplate view`
+        # draws them across the whole sheet.
+        page_guides = data.get("page_guides") or {}
+        self.page_guides: dict[str, list[float]] = {
+            axis: sorted({round(float(v), 3) for v in (page_guides.get(axis) or [])})
+            for axis in ("x", "y")
         }
         self.panels: dict[str, PanelSpec] = self._resolve_panels(data)
 

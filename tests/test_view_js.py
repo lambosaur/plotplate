@@ -24,6 +24,7 @@ FIGURE = {
     "page": {"paper": "a4", "margins": 13.5},
     "area": {"width": 183, "height": 120},
     "guides": {"x": {"left": 11}, "y": {"bottom": 52}},
+    "page_guides": {"x": [91.5], "y": []},
     "panels": {
         "A": {"box": [0, 0, 89.5, 62], "axes": {"roc": {"box": [11, 8, 33, 44]}}},
         "B": {"box": [93.5, 0, 89.5, 62], "axes": {"heat": {"box": [104.5, 8, 70, 44]}}},

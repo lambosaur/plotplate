@@ -91,7 +91,8 @@ panels:
 | `area.height` | yes | mm, or `solve` to compute it from the constraints |
 | `page` | no | the physical sheet: `paper` (a4, letter or `[w, h]`), `margins`, `caption` (mm) |
 | `labels` | no (default `id`) | `id`: the panel key is its letter. `auto`: keys are stable ids and letters are assigned in reading order |
-| `guides.x`, `guides.y` | no | named vertical and horizontal lines |
+| `guides.x`, `guides.y` | no | named vertical and horizontal lines an axes can be placed against |
+| `page_guides.x`, `page_guides.y` | no | unnamed lines to arrange panels against; drawn across the whole sheet |
 | `mosaic` | no | grid shorthand for panel boxes |
 | `constraints` | no | relations between panels, from which boxes are solved ([constraints.md](constraints.md)) |
 | `panels` | yes | panel entries, in reading order |
@@ -112,6 +113,26 @@ Its axes entries name the areas you want to place or align; areas you do not nam
 matplotlib.
 Sub-labels inside a panel (A1, A2 or a, b) are text drawn by the panel code, not layout entries; only
 panel letters are drawn by LaTeX.
+
+## Page guides
+
+```yaml
+page_guides:            # layout millimetres, like everything else
+  x: [91.5]             # a vertical line down the middle of the figure
+  y: [62, 128]          # two horizontal ones
+```
+
+Scaffolding for the author, and the one thing in the file that changes nothing: no axes can be placed
+against a page guide, and deleting one moves no panel.
+`plotplate view` draws them across the whole sheet, margins included (the way a guide dragged off a
+ruler behaves in a drawing program), and panels stick to them while being dragged, which is what they
+are for: putting two panels in different rows on the same line.
+
+Add, move and remove them on the page with `plotplate view … --edit`, or write them here by hand.
+They scale with the figure (`plotplate tidy --width`), and they travel with the layout that declares
+them.
+For lines an axes is actually *placed against*, use named `guides:` instead — the difference is in
+[alignment.md](alignment.md#three-kinds-of-line-and-when-they-disagree).
 
 ## Panel keys and letters
 

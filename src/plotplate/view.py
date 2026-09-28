@@ -83,10 +83,16 @@ PAGE = """<!doctype html>
   <h2>Show</h2>
   <label><input type="checkbox" id="t-sheet" checked> the sheet (page, margins, caption)</label>
   <label><input type="checkbox" id="t-panels" checked> panel boxes</label>
-  <label><input type="checkbox" id="t-axes" checked> axes rectangles</label>
-  <label><input type="checkbox" id="t-guides" checked> guides</label>
-  <label><input type="checkbox" id="t-rules"> alignment rules</label>
-  <label><input type="checkbox" id="t-measured"> measured geometry</label>
+  <label><input type="checkbox" id="t-axes" checked> axes rectangles
+    <span class="mm" id="n-axes"></span></label>
+  <label><input type="checkbox" id="t-guides" checked> axis guides (in the layout)
+    <span class="mm" id="n-guides"></span></label>
+  <label><input type="checkbox" id="t-pguides" checked> page guides (across the sheet)
+    <span class="mm" id="n-pguides"></span></label>
+  <label><input type="checkbox" id="t-rules"> alignment rules (measured)
+    <span class="mm" id="n-rules"></span></label>
+  <label><input type="checkbox" id="t-measured"> measured geometry
+    <span class="mm" id="n-measured"></span></label>
   <label><input type="checkbox" id="t-figure" checked> the figure itself</label>
   <h2>Zoom</h2>
   <div id="zoom">
@@ -109,9 +115,15 @@ PAGE = """<!doctype html>
       <span class="mm">layout.</span><input id="name" value="custom"><span class="mm">.yaml</span>
     </div>
     <div class="row">
+      <button id="guide-x" title="a vertical page guide">+ |</button>
+      <button id="guide-y" title="a horizontal page guide">+ &ndash;</button>
+      <button id="arrange" title="even the gutters and spend the white space">arrange</button>
+    </div>
+    <div class="row">
       <button id="save">save</button><button id="revert">revert</button>
       <span class="mm" id="saved"></span>
     </div>
+    <div class="mm" id="report"></div>
   </div>
   <h2>Panels</h2>
   <ul id="panels"></ul>
@@ -127,12 +139,15 @@ const COLORS = ["#7c3aed", "#0891b2", "#be185d", "#4d7c0f", "#b45309"];
 let stamp = null, state = null, active = null, compare = new Set(), hover = null;
 let ppm = null;  // pixels per millimetre; null = fit the stage
 let draft = {}, picked = null, drag = null;  // editing: boxes moved but not saved yet
+let rulers = null, pickedGuide = null, movedGuides = false;  // the page guides being edited
 let originMM = [0, 0], viewMM = [210, 297];  // what draw() last put in the viewBox
-const SNAP = 1.5;  // mm: how close an edge has to be to another one to stick to it
+// How close an edge has to come to stick: about five screen pixels, so it feels the same
+// whether the figure is drawn at 30 % or at 200 %, and never less than three quarters of a mm.
+const snapMM = () => Math.max(0.75, 5 * viewMM[0] / el("paper").getBoundingClientRect().width);
 const el = id => document.getElementById(id);
 const on = id => el(id).checked;
 const editing = () => !!(state && state.editable && !state.error);
-const dirty = () => Object.keys(draft).length > 0;
+const dirty = () => Object.keys(draft).length > 0 || movedGuides;
 const boxOf = p => draft[p.name] || p.box;
 
 function node(parent, tag, attrs, text) {
@@ -259,6 +274,12 @@ function atEvent(ev) {  // page pixels -> layout millimetres
 // (so an inset wins over the panel it sits in).
 function grab(at) {
   const near = 4 * viewMM[0] / el("paper").getBoundingClientRect().width;
+  if (on("t-pguides") && rulers)
+    for (const axis of ["x", "y"]) {
+      const index = (rulers[axis] || []).findIndex(
+        value => Math.abs(value - at[axis === "x" ? 0 : 1]) < near);
+      if (index >= 0) return {mode: "guide", axis, index, at};
+    }
   const chosen = state.panels.find(p => p.name === picked);
   if (chosen) {
     const rect = boxOf(chosen);
@@ -274,45 +295,64 @@ function grab(at) {
   return {name: inside[0].name, mode: "move", rect: boxOf(inside[0]), at};
 }
 
-// Every edge a dragged edge may stick to: the other panels, the figure, and the guides.
+// Every edge a dragged edge may stick to: the figure, the guides, the other panels -- and,
+// one gutter away from each of those panels, where a neighbour belongs. Without that second
+// kind an edge can only ever land flush against another panel, which is the one arrangement a
+// figure never wants.
 function magnets() {
   const xs = [0, state.width], ys = [0, state.height];
+  const gap = state.gap || 0;
   for (const p of state.panels) {
     if (p.name === (drag && drag.name)) continue;
     const r = boxOf(p);
-    xs.push(r[0], r[0] + r[2]);
-    ys.push(r[1], r[1] + r[3]);
+    xs.push(r[0], r[0] + r[2], r[0] - gap, r[0] + r[2] + gap);
+    ys.push(r[1], r[1] + r[3], r[1] - gap, r[1] + r[3] + gap);
   }
-  xs.push(...Object.values(state.guides.x));
-  ys.push(...Object.values(state.guides.y));
+  const held = drag && drag.mode === "guide" ? drag : {};
+  xs.push(...Object.values(state.guides.x),
+          ...((rulers && rulers.x) || []).filter((_v, i) => held.axis !== "x" || held.index !== i));
+  ys.push(...Object.values(state.guides.y),
+          ...((rulers && rulers.y) || []).filter((_v, i) => held.axis !== "y" || held.index !== i));
   return [xs, ys];
 }
 
+// The nearest magnet within reach, or null when there is none: an edge that does not stick
+// must not win over one that does, which is what deciding by "how far it moved" would do.
 function snap(value, others, free) {
-  if (free) return {value, shift: 0};
-  let best = {value, shift: 0, gap: SNAP};
+  if (free) return null;
+  let best = null, gap = snapMM();
   for (const other of others)
-    if (Math.abs(other - value) < best.gap) best = {value: other, shift: other - value,
-                                                    gap: Math.abs(other - value)};
-  return best;
+    if (Math.abs(other - value) < gap) {
+      gap = Math.abs(other - value);
+      best = other;
+    }
+  return best === null ? null : {value: best, shift: best - value};
 }
+
+const nearest = candidates =>
+  candidates.filter(Boolean).sort((a, b) => Math.abs(a.shift) - Math.abs(b.shift))[0]
+  || {shift: 0};
+
+const stuck = (value, others, free) => (snap(value, others, free) || {value}).value;
 
 function moved(at, free) {
   const [xs, ys] = magnets();
+  if (drag.mode === "guide") {  // a guide sticks to the panel edges, like a panel does to it
+    const axis = drag.axis === "x" ? 0 : 1;
+    return stuck(at[axis], drag.axis === "x" ? xs : ys, free);
+  }
   const dx = at[0] - drag.at[0], dy = at[1] - drag.at[1];
   const r = drag.rect;
   if (drag.mode === "move") {
-    let x = r[0] + dx, y = r[1] + dy;
-    const sx = [snap(x, xs, free), snap(x + r[2], xs, free)]
-      .sort((a, b) => Math.abs(a.shift) - Math.abs(b.shift))[0];
-    const sy = [snap(y, ys, free), snap(y + r[3], ys, free)]
-      .sort((a, b) => Math.abs(a.shift) - Math.abs(b.shift))[0];
+    const x = r[0] + dx, y = r[1] + dy;
+    const sx = nearest([snap(x, xs, free), snap(x + r[2], xs, free)]);
+    const sy = nearest([snap(y, ys, free), snap(y + r[3], ys, free)]);
     return [x + sx.shift, y + sy.shift, r[2], r[3]];
   }
   const right = drag.corner === 1 || drag.corner === 3, low = drag.corner >= 2;
   let x0 = r[0], y0 = r[1], x1 = r[0] + r[2], y1 = r[1] + r[3];
-  if (right) x1 = snap(x1 + dx, xs, free).value; else x0 = snap(x0 + dx, xs, free).value;
-  if (low) y1 = snap(y1 + dy, ys, free).value; else y0 = snap(y0 + dy, ys, free).value;
+  if (right) x1 = stuck(x1 + dx, xs, free); else x0 = stuck(x0 + dx, xs, free);
+  if (low) y1 = stuck(y1 + dy, ys, free); else y0 = stuck(y0 + dy, ys, free);
   return [Math.min(x0, x1 - 1), Math.min(y0, y1 - 1),
           Math.max(1, x1 - x0), Math.max(1, y1 - y0)];
 }
@@ -323,6 +363,48 @@ function edit(name, rect) {
   draft[name] = round2(rect);
   renderEdit();
   draw();
+}
+
+function editGuide(axis, index, value) {
+  rulers[axis][index] = Math.round(value * 100) / 100;
+  movedGuides = true;
+  renderEdit();
+  draw();
+}
+
+function addGuide(axis) {
+  if (!rulers) rulers = {x: [], y: []};
+  rulers[axis].push(Math.round((axis === "x" ? state.width : state.height) / 2 * 100) / 100);
+  pickedGuide = {axis, index: rulers[axis].length - 1};
+  picked = null;
+  movedGuides = true;
+  renderEdit();
+  draw();
+}
+
+function dropGuide() {
+  rulers[pickedGuide.axis].splice(pickedGuide.index, 1);
+  pickedGuide = null;
+  movedGuides = true;
+  renderEdit();
+  draw();
+}
+
+// Page guides run across the whole sheet, margins included, the way a guide dragged off a
+// ruler does in a drawing program. The layer is translated to the figure, so the line simply
+// starts before it and ends after it.
+function drawPageGuides(layer) {
+  const from = [-originMM[0], -originMM[1]], to = [viewMM[0] - originMM[0], viewMM[1] - originMM[1]];
+  (rulers.x || []).forEach((value, index) => {
+    const lit = pickedGuide && pickedGuide.axis === "x" && pickedGuide.index === index;
+    node(layer, "line", {x1: value, y1: from[1], x2: value, y2: to[1], stroke: "#0ea5e9",
+                         "stroke-width": lit ? .7 : .3, "data-guide": "x" + index});
+  });
+  (rulers.y || []).forEach((value, index) => {
+    const lit = pickedGuide && pickedGuide.axis === "y" && pickedGuide.index === index;
+    node(layer, "line", {x1: from[0], y1: value, x2: to[0], y2: value, stroke: "#0ea5e9",
+                         "stroke-width": lit ? .7 : .3, "data-guide": "y" + index});
+  });
 }
 
 function drawCompared(layer) {
@@ -364,6 +446,7 @@ function draw() {
   box(layer, [0, 0, state.width, state.height],
       {fill: "none", stroke: "#1d4ed855", "stroke-width": .3});
   drawLayout(layer, state);
+  if (on("t-pguides") && rulers) drawPageGuides(layer);
   drawCompared(layer);
 }
 
@@ -376,14 +459,19 @@ function renderEdit() {
   const rect = panel ? boxOf(panel) : null;
   el("picked").innerHTML = panel
     ? `<b>${panel.label || panel.name}</b> ${draft[panel.name] ? "moved" : "unchanged"}`
-    : "drag a panel to move it, its corners to resize it";
+    : pickedGuide
+      ? `page guide ${pickedGuide.axis} at `
+        + `<b>${rulers[pickedGuide.axis][pickedGuide.index]} mm</b> — delete removes it`
+      : "drag a panel to move it, its corners to resize it";
   for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries()) {
     el(key).disabled = !rect;
     el(key).value = rect ? rect[i] : "";
   }
   const count = Object.keys(draft).length;
-  el("saved").className = "mm" + (count ? " dirty" : "");
-  if (count) el("saved").textContent = `${count} panel${count > 1 ? "s" : ""} moved, not saved`;
+  el("saved").className = "mm" + (dirty() ? " dirty" : "");
+  if (dirty())
+    el("saved").textContent =
+      (count ? `${count} panel${count > 1 ? "s" : ""} moved` : "guides changed") + ", not saved";
 }
 
 function renderVariants() {
@@ -409,6 +497,8 @@ function renderVariants() {
       active = input.value;
       draft = {};
       picked = null;
+      pickedGuide = null;
+      movedGuides = false;
       refresh(true);
     });
   for (const input of holder.querySelectorAll("input[data-compare]"))
@@ -429,10 +519,27 @@ function showError(message) {
   el("issues").replaceChildren(div);
 }
 
+// A layer nothing has yet -- axes before any panel is drawn, rules before an alignment.yaml --
+// says so and switches itself off, instead of leaving an empty box to wonder about.
+function renderLayers() {
+  const counts = {
+    axes: (state.panels || []).reduce((total, p) => total + p.axes.length, 0),
+    guides: Object.keys(state.guides.x).length + Object.keys(state.guides.y).length,
+    pguides: ((rulers || {}).x || []).length + ((rulers || {}).y || []).length,
+    rules: (state.rules || []).length,
+    measured: (state.features || []).length,
+  };
+  for (const [key, count] of Object.entries(counts)) {
+    el("n-" + key).textContent = count ? `(${count})` : "(none yet)";
+    el("t-" + key).disabled = !count;
+  }
+}
+
 function render() {
   renderVariants();
   renderEdit();
   if (state.error) return showError(state.error);
+  renderLayers();
   el("size").textContent = `${state.width} x ${state.height} mm`
     + (state.sheet ? ` on ${state.sheet.paper.toUpperCase()}` : "");
   el("panels").replaceChildren(...(state.panels || []).map(p => {
@@ -455,6 +562,31 @@ function render() {
   draw();
 }
 
+async function arrange() {
+  el("report").textContent = "arranging...";
+  try {
+    const answer = await (await fetch("optimize", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({layout: active, panels: draft}),
+    })).json();
+    if (answer.error) {
+      el("report").className = "mm dirty";
+      el("report").textContent = answer.error;
+      return;
+    }
+    // The result is another edit, not a saved layout: it can be nudged, reverted or saved.
+    for (const [name, rect] of Object.entries(answer.panels)) draft[name] = rect;
+    el("report").className = "mm";
+    el("report").textContent =
+      [answer.summary, ...answer.notes.map(note => note.message)].join(" — ");
+    renderEdit();
+    draw();
+  } catch (err) {
+    el("report").className = "mm dirty";
+    el("report").textContent = "could not arrange: " + err;
+  }
+}
+
 async function save() {
   const name = el("name").value.trim();
   el("saved").className = "mm";
@@ -462,7 +594,7 @@ async function save() {
   try {
     const answer = await fetch("save", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({layout: active, variant: name, panels: draft}),
+      body: JSON.stringify({layout: active, variant: name, panels: draft, page_guides: rulers}),
     });
     const result = await answer.json();
     if (result.error) {
@@ -471,7 +603,9 @@ async function save() {
       return;
     }
     draft = {};
+    movedGuides = false;
     picked = null;
+    pickedGuide = null;
     active = result.variant;
     await refresh(true);
     el("saved").textContent = "wrote " + result.saved;
@@ -490,6 +624,9 @@ async function refresh(force) {
       stamp = fresh.stamp;
       state = fresh;
       active = fresh.active;
+      rulers = {x: [...((fresh.page_guides || {}).x || [])],
+                y: [...((fresh.page_guides || {}).y || [])]};
+      movedGuides = false;
       render();
     }
   } catch (err) { /* the server went away; keep the last view */ }
@@ -504,10 +641,10 @@ for (const input of document.querySelectorAll("#side > label input"))
 
 el("paper").addEventListener("pointerdown", ev => {
   if (!editing()) return;
-  const at = atEvent(ev);
-  const got = grab(at);
-  picked = got ? got.name : null;
+  const got = grab(atEvent(ev));
   drag = got;
+  picked = got && got.mode !== "guide" ? got.name : null;
+  pickedGuide = got && got.mode === "guide" ? {axis: got.axis, index: got.index} : null;
   if (got) el("paper").setPointerCapture(ev.pointerId);
   renderEdit();
   draw();
@@ -515,18 +652,33 @@ el("paper").addEventListener("pointerdown", ev => {
 el("paper").addEventListener("pointermove", ev => {
   if (!drag) return;
   ev.preventDefault();
-  edit(drag.name, moved(atEvent(ev), ev.shiftKey));  // shift: ignore the magnets
+  const to = moved(atEvent(ev), ev.shiftKey);  // shift: ignore the magnets
+  if (drag.mode === "guide") editGuide(drag.axis, drag.index, to);
+  else edit(drag.name, to);
 });
 el("paper").addEventListener("pointerup", ev => {
   if (drag) el("paper").releasePointerCapture(ev.pointerId);
   drag = null;
 });
 document.addEventListener("keydown", ev => {
-  if (!editing() || !picked || ev.target.tagName === "INPUT") return;
+  if (!editing() || ev.target.tagName === "INPUT") return;
+  if (pickedGuide && (ev.key === "Delete" || ev.key === "Backspace")) {
+    ev.preventDefault();
+    return dropGuide();
+  }
   const step = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[ev.key];
   if (!step) return;
-  ev.preventDefault();
   const by = ev.shiftKey ? 2 : 0.5;
+  if (pickedGuide) {
+    ev.preventDefault();
+    const along = pickedGuide.axis === "x" ? step[0] : step[1];
+    if (along)
+      editGuide(pickedGuide.axis, pickedGuide.index,
+                rulers[pickedGuide.axis][pickedGuide.index] + along * by);
+    return;
+  }
+  if (!picked) return;
+  ev.preventDefault();
   const rect = boxOf(state.panels.find(p => p.name === picked));
   edit(picked, [rect[0] + step[0] * by, rect[1] + step[1] * by, rect[2], rect[3]]);
 });
@@ -538,7 +690,20 @@ for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries())
     if (!isNaN(rect[i])) edit(picked, rect);
   });
 el("save").onclick = save;
-el("revert").onclick = () => { draft = {}; el("saved").textContent = ""; renderEdit(); draw(); };
+el("arrange").onclick = arrange;
+el("guide-x").onclick = () => addGuide("x");
+el("guide-y").onclick = () => addGuide("y");
+el("revert").onclick = () => {
+  draft = {};
+  picked = null;
+  pickedGuide = null;
+  movedGuides = false;
+  rulers = {x: [...((state.page_guides || {}).x || [])], y: [...((state.page_guides || {}).y || [])]};
+  el("saved").textContent = "";
+  el("report").textContent = "";
+  renderEdit();
+  draw();
+};
 el("z-in").onclick = () => { ppm = (ppm || 3.78) * 1.25; draw(); };
 el("z-out").onclick = () => { ppm = (ppm || 3.78) / 1.25; draw(); };
 el("z-one").onclick = () => { ppm = 3.78; draw(); };
@@ -560,6 +725,23 @@ def _checked_rect(name: str, value: Any) -> Rect:
     if w < 1.0 or h < 1.0:
         raise ValueError(f"{name}: a panel smaller than 1 x 1 mm is a mistake, not a layout")
     return Rect(round(x, 2), round(y, 2), round(w, 2), round(h, 2))
+
+
+def _checked_guides(guides: dict[str, Any]) -> dict[str, list[float]]:
+    """The page guides from the page, refused unless they are millimetres on the sheet."""
+    checked: dict[str, list[float]] = {}
+    for axis in ("x", "y"):
+        values = list(guides.get(axis) or [])
+        if len(values) > 40:
+            raise ValueError(f"{len(values)} {axis} page guides is more than a figure can use")
+        try:
+            numbers = sorted({round(float(v), 2) for v in values})
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"page guides on {axis} must be numbers: {values!r}") from exc
+        if not all(abs(v) < 1e4 for v in numbers):
+            raise ValueError(f"page guides on {axis} are not millimetres: {values!r}")
+        checked[axis] = numbers
+    return checked
 
 
 @dataclass
@@ -623,6 +805,7 @@ class Viewer:
         """Everything the page draws: the sheet, the variants, and the active layout in full."""
         from .align import check_rules, read_features, rule_lines
         from .cli import _alignment_rules
+        from .pack import Target
         from .render import panel_status
 
         variants = self.variants()
@@ -663,6 +846,8 @@ class Viewer:
                 "assumed": sheet.assumed,
             },
             "guides": layout.guides,
+            "page_guides": layout.page_guides,
+            "gap": Target.from_layout(layout).gap,
             "panels": [
                 {
                     "name": name,
@@ -686,7 +871,13 @@ class Viewer:
             "issues": [{"level": issue.level, "text": str(issue)} for issue in issues],
         }
 
-    def save(self, key: str | None, variant: str, boxes: dict[str, Any]) -> Path:
+    def save(
+        self,
+        key: str | None,
+        variant: str,
+        boxes: dict[str, Any],
+        guides: dict[str, Any] | None = None,
+    ) -> Path:
         """Write the boxes edited on the page as ``layout.<variant>.yaml``.
 
         The result is a resolved layout written by :func:`plotplate.pack.place_boxes`, so the
@@ -697,6 +888,8 @@ class Viewer:
             key: the variant that was edited, which the saved one is based on.
             variant: the name to save under, which becomes ``layout.<variant>.yaml``.
             boxes: the panels that moved, each as ``[x, y, w, h]`` in layout millimetres.
+            guides: the page guides to store, as ``{"x": [...], "y": [...]}`` in the same
+                millimetres; ``None`` keeps the ones the layout already has.
 
         Returns:
             The file that was written.
@@ -726,9 +919,54 @@ class Viewer:
             new[name] = _checked_rect(name, value)
         data = layout.resolved()
         place_boxes(data, layout, old, new)
+        if guides is not None:
+            data["page_guides"] = _checked_guides(guides)
+            if not (data["page_guides"]["x"] or data["page_guides"]["y"]):
+                data.pop("page_guides")
         path = variant_path(self.path(key), variant)
         dump_yaml(data, path)
         return path
+
+    def arrange(self, key: str | None, boxes: dict[str, Any]) -> dict[str, Any]:
+        """What ``plotplate optimize`` makes of the boxes currently on the page.
+
+        Nothing is written: the new boxes go back to the page as another edit, which can be
+        nudged further, reverted or saved like any other. The figure keeps the size it has, so
+        the button rearranges the panels inside the area instead of resizing the area under the
+        pointer.
+
+        Raises:
+            PermissionError: the viewer was not started with ``--edit``.
+            PackError: the panels are not a grid, or no arrangement fits.
+        """
+        from dataclasses import replace
+
+        from .pack import Target, bring_inside, optimize, place_boxes
+
+        if not self.editable:
+            raise PermissionError("this viewer is read-only; start it with `plotplate view --edit`")
+        layout = self.layout(key)
+        old = {name: spec.box for name, spec in layout.panels.items()}
+        new = {**old, **{name: _checked_rect(name, value) for name, value in boxes.items()}}
+        new = bring_inside(new, layout.width, layout.height)
+        data = layout.resolved()
+        place_boxes(data, layout, old, new)
+        drafted = Layout(data)
+        target = replace(Target.from_layout(drafted), width=drafted.width, height=drafted.height)
+        arranged, report = optimize(drafted, target)
+        return {
+            "panels": {name: entry["box"] for name, entry in (arranged.get("panels") or {}).items()},
+            "width": report.width,
+            "height": report.height,
+            "summary": (
+                f"gutters {report.gutters[0][0]:.1f}-{report.gutters[0][1]:.1f}"
+                f" -> {report.gutters[1][0]:.1f} mm"
+                f" · panels {report.occupancy[0]:.0%} -> {report.occupancy[1]:.0%}"
+                f" of the figure · up to {report.stretch:.2f}x"
+                + (" (chosen for you)" if report.automatic else "")
+            ),
+            "notes": [note.as_dict() for note in report.notes],
+        }
 
     def figure_png(self, key: str | None = None, dpi: int = 160) -> bytes:
         """The composed figure as PNG bytes, without writing any file."""
@@ -765,8 +1003,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"error": str(exc)}).encode(), "application/json", 500)
 
     def do_POST(self) -> None:
-        """Save the edited boxes as a variant. Only ``/save``, and only with ``--edit``."""
-        if urlparse(self.path).path.lstrip("/") != "save":
+        """Write a variant (``/save``) or re-arrange the edited boxes (``/optimize``).
+
+        Both need ``--edit``: one writes a file, and the other only makes sense as a step
+        towards writing one.
+        """
+        route = urlparse(self.path).path.lstrip("/")
+        if route not in ("save", "optimize"):
             self.send_error(404)
             return
         # A page on another site can POST to localhost, but not with this content type and not
@@ -784,18 +1027,19 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
-            saved = self.viewer.save(
-                payload.get("layout"),
-                str(payload.get("variant") or "custom"),
-                dict(payload.get("panels") or {}),
-            )
+            panels = dict(payload.get("panels") or {})
+            if route == "optimize":
+                answer = self.viewer.arrange(payload.get("layout"), panels)
+            else:
+                variant = str(payload.get("variant") or "custom")
+                saved = self.viewer.save(
+                    payload.get("layout"), variant, panels, payload.get("page_guides")
+                )
+                answer = {"saved": saved.name, "variant": variant}
         except Exception as exc:  # noqa: BLE001 - the page shows the reason and stays open
             self._send(json.dumps({"error": str(exc)}).encode(), "application/json", 400)
             return
-        self._send(
-            json.dumps({"saved": saved.name, "variant": payload.get("variant") or "custom"}).encode(),
-            "application/json",
-        )
+        self._send(json.dumps(answer).encode(), "application/json")
 
     def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
         self.send_response(status)

@@ -291,41 +291,34 @@ def _optimize_target(args: argparse.Namespace, layout: Layout) -> Any:
     belong in the layout, where they are versioned and where an agent can edit them; the flags
     are for trying something out.
     """
+    from dataclasses import replace
+
     from .pack import Target
 
-    section = dict(layout.raw.get("optimize") or {})
-    per_panel = dict(section.pop("panels", None) or {})
-    stretch: float | None = None
-    raw_stretch = args.max_stretch if args.max_stretch is not None else section.get("max_stretch")
-    if raw_stretch is not None and str(raw_stretch).lower() != "auto":
-        stretch = float(raw_stretch)
+    target = Target.from_layout(layout)
+    stretch = target.stretch
+    if args.max_stretch is not None:
+        stretch = None if str(args.max_stretch).lower() == "auto" else float(args.max_stretch)
     width = None
     if args.width is not None:
         value = _number_or_name(args.width)
         width = float(value) if not isinstance(value, str) else _journal_width(layout, value)
         if width is None:
             raise SystemExit(1)
-    height_arg = args.height if args.height is not None else section.get("height", "scale")
-    height = None
-    if str(height_arg) not in ("scale", "None"):
-        height = layout.height if height_arg == "keep" else float(height_arg)
-    frozen = {name for name, entry in per_panel.items() if (entry or {}).get("freeze")}
-    aspect = {name for name, entry in per_panel.items() if (entry or {}).get("keep_aspect")}
-    return Target(
-        gap=args.gap if args.gap is not None else float(section.get("gap", 4.0)),
+    height = target.height
+    if args.height is not None:
+        height = None if args.height == "scale" else (
+            layout.height if args.height == "keep" else float(args.height)
+        )  # fmt: skip
+    return replace(
+        target,
+        gap=args.gap if args.gap is not None else target.gap,
         stretch=stretch,
-        shrink=float(
-            args.max_shrink if args.max_shrink is not None else section.get("max_shrink", 1.2)
-        ),
+        shrink=args.max_shrink if args.max_shrink is not None else target.shrink,
         width=width,
         height=height,
-        freeze=tuple(sorted(frozen | set(args.freeze or ()))),
-        keep_aspect=tuple(sorted(aspect | set(args.keep_aspect or ()))),
-        limits={
-            name: float(entry["stretch"])
-            for name, entry in per_panel.items()
-            if (entry or {}).get("stretch") is not None
-        },
+        freeze=tuple(sorted(set(target.freeze) | set(args.freeze or ()))),
+        keep_aspect=tuple(sorted(set(target.keep_aspect) | set(args.keep_aspect or ()))),
     )
 
 

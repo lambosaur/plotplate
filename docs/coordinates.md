@@ -27,9 +27,8 @@ no level between panel and axes.
 
 ## Where these words come from
 
-Most of them are borrowed, so that a layout file can be read by someone who has never seen
-plotplate. One is ours, and a few are borrowed words that mean something slightly different
-elsewhere.
+Most of them are borrowed, so that a layout file can be read by someone who has never seen plotplate.
+One is ours, and a few are borrowed words that mean something slightly different elsewhere.
 
 | this project | matplotlib | LaTeX | Illustrator / Inkscape | journal guidelines |
 | --- | --- | --- | --- | --- |
@@ -38,19 +37,25 @@ elsewhere.
 | **area** | `Figure` | the `\includegraphics` box | artboard, canvas | "the figure" |
 | panel | `Figure` (one per file) | a `subfigure` | an object group | **panel** (`a`, `b`, `c`...) |
 | axes | **`Axes`** | - | - | a plot, a chart |
-| guide | - | - | **guide** (a non-printing line) | - |
+| axis guide | - | - | - | - |
+| page guide | - | - | **guide** (a non-printing line) | - |
 | gutter | `wspace`, `hspace` | `\columnsep` | gutter (between columns) | space between panels |
 | caption | - | `\caption` | - | caption, or **legend** |
 
-- **area** is the only word invented here. The candidates were taken: "figure" is what matplotlib
-  calls a panel *and* what the manuscript calls the whole thing, "page" is the sheet, and
-  "artboard" belongs to a drawing program. So the figure's own box is the *area*.
-- **axes**, in matplotlib and here, is one whole plot, not the two lines through the origin. This
-  trips up everyone once; matplotlib's own documentation says as much.
+- **area** is the only word invented here.
+  The candidates were taken: "figure" is what matplotlib calls a panel *and* what the manuscript calls
+  the whole thing, "page" is the sheet, and "artboard" belongs to a drawing program.
+  So the figure's own box is the *area*.
+- **axes**, in matplotlib and here, is one whole plot, not the two lines through the origin.
+  This trips up everyone once; matplotlib's own documentation says as much.
 - **gutter** in bookbinding is the inner margin of a page; here it is only the space between two
   panels, as in a column layout.
-- **caption** is LaTeX's word; most life-science journals say *legend* for the same text.
-  plotplate never typesets it, it only keeps room for it (`page.caption`).
+- a **page guide** is the drawing program's guide: a line you put on the sheet to arrange things
+  against.
+  An **axis guide** is the other thing plotplate calls a guide, and it is a reference: an axes can be
+  *placed at* it ([alignment.md](alignment.md#three-kinds-of-line-and-when-they-disagree)).
+- **caption** is LaTeX's word; most life-science journals say *legend* for the same text. plotplate
+  never typesets it, it only keeps room for it (`page.caption`).
 
 ## The systems
 

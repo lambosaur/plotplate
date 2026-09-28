@@ -186,3 +186,40 @@ def test_cli_json_reports_notes_as_records(ragged, tmp_path, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["notes"] and all({"code", "message"} <= set(n) for n in report["notes"])
     assert any(n["code"] == "row-slack" and n["spare_mm"] > 0 for n in report["notes"])
+
+
+def test_bring_inside_puts_a_stray_panel_back(ragged):
+    """A box dragged over the edge is a mistake, not an arrangement: it is put back first."""
+    from plotplate.pack import bring_inside
+
+    fixed = bring_inside(
+        {
+            "A": Rect(-10, -5, 70, 48),  # pulled up and to the left
+            "B": Rect(170, 0, 40, 48),  # pushed off the right edge
+            "C": Rect(0, 0, 200, 300),  # larger than the figure itself
+        },
+        183.0,
+        140.0,
+    )
+    assert fixed["A"] == Rect(0, 0, 70, 48)  # moved, same size
+    assert fixed["B"] == Rect(143, 0, 40, 48)
+    assert fixed["C"] == Rect(0, 0, 183, 140)  # only this one had to shrink
+
+
+def test_the_optimize_section_is_read_once_for_every_caller(tmp_path):
+    """The command, the viewer and an agent must read the same intent from the same place."""
+    from plotplate.pack import Target
+
+    data = {
+        **RAGGED,
+        "optimize": {
+            "gap": 3,
+            "max_stretch": 1.3,
+            "height": "keep",
+            "panels": {"A": {"freeze": True}, "B": {"stretch": 1.05}, "C": {"keep_aspect": True}},
+        },
+    }
+    dump_yaml(data, tmp_path / "layout.yaml")
+    target = Target.from_layout(pp.Layout.load(tmp_path / "layout.yaml"))
+    assert (target.gap, target.stretch, target.height) == (3.0, 1.3, 140.0)
+    assert (target.freeze, target.keep_aspect, target.limits) == (("A",), ("C",), {"B": 1.05})

@@ -194,3 +194,69 @@ def test_a_save_from_another_site_or_a_form_is_refused(editable):
             urllib.request.urlopen(request, timeout=10)
         assert caught.value.code in (403, 415)
     assert not layout.path.with_name("layout.custom.yaml").exists()
+
+
+def test_page_guides_are_saved_with_the_boxes(editable):
+    """Page guides are the author's scaffolding: they travel with the variant they belong to."""
+    base, layout = editable
+    answer = post(
+        base + "save",
+        {"variant": "custom", "panels": {}, "page_guides": {"x": [91.5, 10], "y": [64]}},
+    )
+    assert answer["saved"] == "layout.custom.yaml"
+    saved = pp.Layout.load(layout.path.with_name("layout.custom.yaml"))
+    assert saved.page_guides == {"x": [10.0, 91.5], "y": [64.0]}  # sorted, and still millimetres
+    assert json.loads(fetch(base + "state.json?layout=custom"))["page_guides"]["y"] == [64.0]
+
+
+def test_a_layout_without_page_guides_gains_none(editable):
+    base, layout = editable
+    post(base + "save", {"variant": "custom", "panels": {}, "page_guides": {"x": [], "y": []}})
+    assert "page_guides" not in pp.config.load_yaml(layout.path.with_name("layout.custom.yaml"))
+
+
+def test_the_page_can_arrange_what_it_holds_without_writing_anything(editable):
+    """The arrange button: optimize on the draft, answered as boxes, no file touched."""
+    base, layout = editable
+    before = sorted(p.name for p in layout.path.parent.iterdir())
+    answer = post(base + "optimize", {"panels": {"A": [0, 0, 60, 40]}})
+
+    assert set(answer["panels"]) == set(layout.panels)
+    assert answer["width"] == layout.width and answer["height"] == layout.height
+    assert "of the figure" in answer["summary"]
+    assert sorted(p.name for p in layout.path.parent.iterdir()) == before  # nothing written
+
+
+def test_arranging_brings_a_panel_dragged_off_the_figure_back(editable):
+    """The case the button exists for: a box pulled over the edge, put back where it belongs."""
+    base, layout = editable
+    answer = post(base + "optimize", {"panels": {"B": [120, -14, 89.5, 25]}})
+    for box in answer["panels"].values():
+        assert box[0] >= -0.01 and box[1] >= -0.01
+        assert box[0] + box[2] <= layout.width + 0.01
+        assert box[1] + box[3] <= layout.height + 0.01
+
+
+def test_a_read_only_viewer_does_not_arrange_either(served):
+    base, _layout = served
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        post(base + "optimize", {"panels": {}})
+    assert "read-only" in caught.value.read().decode()
+
+
+def test_a_layout_that_declares_no_axes_shows_none(tmp_path):
+    """From a screenshot there are only panel boxes: nothing is inferred, so nothing is drawn."""
+    from plotplate.config import dump_yaml
+
+    dump_yaml(
+        {
+            "schema": 1,
+            "area": {"width": 180, "height": 60},
+            "panels": {"A": {"box": [0, 0, 88, 60]}, "B": {"box": [92, 0, 88, 60]}},
+        },
+        tmp_path / "layout.yaml",
+    )
+    state = Viewer(tmp_path).state()
+    assert [p["axes"] for p in state["panels"]] == [[], []]
+    assert state["features"] == [] and state["rules"] == []  # nothing measured, nothing to check
+    assert state["guides"] == {"x": {}, "y": {}} and state["page_guides"] == {"x": [], "y": []}

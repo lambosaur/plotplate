@@ -109,3 +109,35 @@ def test_page_without_area_still_means_the_figure_box(layout_data):
         and assumed.assumed
         and assumed.area.to_list() == [13.5, 25.0, 183.0, 60.0]
     )
+
+
+def test_page_guides_are_plain_numbers(tmp_path):
+    """Page guides are scaffolding: unnamed, sorted, and nothing can be placed against them."""
+    import plotplate as pp
+
+    layout = pp.Layout(
+        {
+            "schema": 1,
+            "area": {"width": 183, "height": 60},
+            "page_guides": {"x": [91.5, 10, 10], "y": []},
+            "panels": {"A": {"box": [0, 0, 89, 60]}},
+        }
+    )
+    assert layout.page_guides == {"x": [10.0, 91.5], "y": []}
+    assert layout.resolved()["page_guides"]["x"] == [91.5, 10, 10]  # kept as written
+
+
+def test_scaling_a_layout_scales_its_page_guides(tmp_path):
+    """Retargeting to another column width moves every line with the figure, guides included."""
+    from plotplate.tidy import scale_layout
+
+    data = {
+        "schema": 1,
+        "area": {"width": 100, "height": 50},
+        "guides": {"x": {"left": 10}, "y": {}},
+        "page_guides": {"x": [50], "y": [25]},
+        "panels": {"A": {"box": [0, 0, 100, 50], "axes": {"main": {"left": 10, "right": 90}}}},
+    }
+    scaled = scale_layout(data, 200)
+    assert scaled["page_guides"] == {"x": [100.0], "y": [50.0]}
+    assert scaled["guides"]["x"]["left"] == 20.0

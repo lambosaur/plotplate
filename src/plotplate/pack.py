@@ -267,6 +267,37 @@ class Target:
         """How much this panel may grow: its own limit, or the figure's."""
         return self.limits.get(panel, self.stretch if self.stretch is not None else 1.0)
 
+    @classmethod
+    def from_layout(cls, layout: Layout) -> Target:
+        """The settings the figure carries in its ``optimize:`` section.
+
+        A limit that belongs to a figure -- a photograph that must keep its proportions, a
+        panel that must not be touched -- is written in the layout, so every way of running the
+        optimizer (the command, the viewer, an agent) reads the same intent. What the section
+        does not say keeps the default; the command line overrides it for one run.
+        """
+        section = dict(layout.raw.get("optimize") or {})
+        panels = dict(section.get("panels") or {})
+        raw_stretch = section.get("max_stretch")
+        height = section.get("height", "scale")
+        return cls(
+            gap=float(section.get("gap", 4.0)),
+            stretch=None
+            if raw_stretch is None or str(raw_stretch).lower() == "auto"
+            else float(raw_stretch),
+            shrink=float(section.get("max_shrink", 1.2)),
+            height=None
+            if str(height) in ("scale", "None")
+            else (layout.height if height == "keep" else float(height)),
+            freeze=tuple(sorted(n for n, e in panels.items() if (e or {}).get("freeze"))),
+            keep_aspect=tuple(sorted(n for n, e in panels.items() if (e or {}).get("keep_aspect"))),
+            limits={
+                name: float(entry["stretch"])
+                for name, entry in panels.items()
+                if (entry or {}).get("stretch") is not None
+            },
+        )
+
 
 @dataclass(frozen=True)
 class Note:
@@ -464,6 +495,23 @@ def _map_value(value: float, old: tuple[float, float], new: tuple[float, float])
     if old[1] - old[0] <= 1e-9:
         return new[0] + (value - old[0])
     return new[0] + (value - old[0]) * (new[1] - new[0]) / (old[1] - old[0])
+
+
+def bring_inside(boxes: dict[str, Rect], width: float, height: float) -> dict[str, Rect]:
+    """Move every panel back inside the figure, keeping its size where that is possible.
+
+    A box dragged over the edge is not a new arrangement, it is a mistake, and optimizing it as
+    it stands would pull the whole grid out with it: the top boundary would sit above the
+    figure, and every other panel would be squashed to make the total fit. So the boxes are
+    put back first -- shifted, and shrunk only when one is larger than the figure itself.
+    """
+    fixed = {}
+    for name, box in boxes.items():
+        w, h = min(box.w, width), min(box.h, height)
+        x = min(max(box.x, 0.0), width - w)
+        y = min(max(box.y, 0.0), height - h)
+        fixed[name] = Rect(round(x, 3), round(y, 3), round(w, 3), round(h, 3))
+    return fixed
 
 
 def _map_axes(old_box: Rect, new_box: Rect, rects: list[Rect]) -> list[Rect]:

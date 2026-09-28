@@ -19,11 +19,33 @@ Two mechanisms cover it, and they work in opposite directions:
 | --- | --- | --- | --- |
 | **constraints** | input: they place panels | `layout.yaml` | "these two panels have equal widths, 4 mm apart" ([constraints.md](constraints.md)) |
 | **guides** | input: they place things | `layout.yaml` | "put the bottom spine of these axes at y = 45 mm" |
+| **page guides** | neither: they are scaffolding | `layout.yaml` | "I want these two panels to line up *here*" |
 | **alignment rules** | output: they measure what happened | `alignment.yaml` + `panels/<panel>.json` | "do these features actually coincide, and by how much do they differ?" |
 
 Guides alone are enough when every aligned feature is an axes rectangle you placed.
 Rules are needed when the feature is not a placed rectangle: a library figure's heatmap, a bar
 baseline, a boxplot without spines.
+
+### Three kinds of line, and when they disagree
+
+`plotplate view` draws all three, which makes them look interchangeable.
+They are not:
+
+| line | drawn | comes from | what it does |
+| --- | --- | --- | --- |
+| axis guide | inside the figure, dashed grey | `guides:` | an axes edge can *be* it (`bottom: row1_bottom`) |
+| page guide | across the whole sheet, blue | `page_guides:` | nothing is placed against it; panels stick to it while you drag |
+| alignment rule | inside the figure, dashed red | `alignment.yaml` + what the panels measured | it reports whether things really did line up |
+
+A guide and a rule over the same line look identical **while everything is in order**, and that is the
+normal state.
+They separate exactly when it matters: a guide is where you *said* the spine should be, a rule is
+drawn where the spine *ended up* after matplotlib laid out the tick labels, a long axis title or a
+colourbar.
+Rebuild a panel with a longer y-label, and the rule moves while the guide does not — the gap between
+the two lines is the misalignment, and `plotplate align` gives it in millimetres.
+A figure whose panels have never been drawn has guides and no rules at all: there is nothing measured
+to draw yet.
 
 ## Guides: declaring shared lines
 

@@ -33,7 +33,8 @@ class Node {
 
 const ids = {};
 const el = id => (ids[id] ||= new Node("div"));
-for (const id of ["t-sheet", "t-panels", "t-axes", "t-guides", "t-figure"]) el(id).checked = true;
+for (const id of ["t-sheet", "t-panels", "t-axes", "t-guides", "t-pguides", "t-figure"])
+  el(id).checked = true;
 el("paper").tag = "svg";
 
 global.document = {
@@ -51,6 +52,13 @@ global.fetch = async (url, options) => {
     posted.push(JSON.parse(options.body));
     return {json: async () => ({saved: "layout.custom.yaml", variant: "custom"})};
   }
+  if (url.startsWith("optimize")) {
+    posted.push(JSON.parse(options.body));
+    return {json: async () => ({                       // what the real route answers with
+      panels: {A: [0, 0, 89.5, 62], B: [93.5, 0, 89.5, 62], C: [0, 66, 183, 54]},
+      width: 183, height: 120, summary: "panels 90% -> 96% of the figure", notes: [],
+    })};
+  }
   return {json: async () => state};
 };
 
@@ -62,6 +70,11 @@ const pointer = (type, at, extra = {}) => el("paper").fire(type, {
   clientX: at[0] / state.sheet.size[0] * 794, clientY: at[1] / state.sheet.size[1] * 1123,
   pointerId: 1, preventDefault: () => {}, ...extra,
 });
+const guides = () => el("paper").children.flatMap(function lines(node) {
+  return (node.tag === "line" && node.attrs["data-guide"] ? [node] : [])
+    .concat(node.children.flatMap(lines));
+}).map(node => node.attrs);
+
 const boxes = () => Object.fromEntries(el("paper").rects()
   .filter(rect => rect.attrs["data-panel"])
   .map(rect => [rect.attrs["data-panel"],
@@ -81,19 +94,25 @@ setImmediate(async () => {
   check("B is selected", el("picked").innerHTML.includes("<b>B</b>"));
   pointer("pointermove", mm(110, 33));
   pointer("pointerup", mm(110, 33));
-  check("B moved, and stuck to the gutter next to A", boxes().B.join() === "73.5,3,89.5,62");
+  check("B moved, and its bottom stuck to C's top edge", boxes().B.join() === "73.5,4,89.5,62");
   check("A stayed where it was", boxes().A.join() === "0,0,89.5,62");
   check("the fields follow the drag", el("f-x").value === 73.5);
   check("unsaved changes are announced", el("saved").textContent.includes("not saved"));
   const axes = el("paper").rects().filter(rect => rect.attrs.stroke === "#d97706");
   check("the axes rode along", axes.some(a => Math.abs(a.attrs.x - 84.5) < 0.01));
 
+  pointer("pointerdown", mm(118.25, 35));           // drag it back towards A, stopping short
+  pointer("pointermove", mm(137.95, 35));
+  pointer("pointerup", mm(137.95, 35));
+  check("it stops one gutter away from A, not against it",
+        boxes().B[0] === 93.5);                     // A ends at 89.5, and the gutter is 4 mm
+
   pointer("pointerdown", mm(60, 30));   // select A, then drag its bottom-right corner
   pointer("pointerdown", mm(89.5, 62));
   pointer("pointermove", mm(182, 65.2));
   pointer("pointerup", mm(182, 65.2));
   check("the corner snapped to the figure edge and to B's bottom",
-        boxes().A.join() === "0,0,183,65");
+        boxes().A.join() === "0,0,183,66");
 
   document.handlers.keydown[0]({key: "ArrowRight", shiftKey: false, preventDefault: () => {},
                                 target: {tagName: "DIV"}});
@@ -109,5 +128,43 @@ setImmediate(async () => {
   check("only the panel that moved is sent",
         posted.length === 1 && Object.keys(posted[0].panels).join() === "B");
   check("the save says where it went", el("saved").textContent.includes("wrote"));
+
+  // --- page guides ---------------------------------------------------------------------
+  check("the layout's page guide is drawn across the sheet", guides().length === 1
+        && Number(guides()[0].x1) === 91.5
+        && Number(guides()[0].y1) < 0            // it starts above the figure, on the sheet
+        && Number(guides()[0].y2) > state.height);
+  el("guide-y").onclick();
+  check("a guide can be added", guides().length === 2
+        && el("picked").innerHTML.includes("page guide y"));
+  document.handlers.keydown[0]({key: "ArrowDown", shiftKey: true, preventDefault: () => {},
+                                target: {tagName: "DIV"}});
+  check("an arrow key moves the selected guide", guides().some(g => Number(g.y1) === 62));
+  check("changed guides count as unsaved", el("saved").textContent.includes("not saved"));
+
+  pointer("pointerdown", mm(60, 62));               // grab that guide and drag it up a little
+  pointer("pointermove", mm(60, 60.9));
+  pointer("pointerup", mm(60, 60.9));
+  check("a dragged guide sticks to a panel edge",
+        guides().some(g => Number(g.y1) === 62));   // B's bottom edge, not 60.9
+  document.handlers.keydown[0]({key: "Delete", preventDefault: () => {},
+                                target: {tagName: "DIV"}});
+  check("delete removes the selected guide", guides().length === 1);
+
+  // and the other way round: a panel dragged near a page guide sticks to it
+  pointer("pointerdown", mm(40, 30));               // A, dragged right until its edge nears 91.5
+  pointer("pointermove", mm(42.2, 30));
+  pointer("pointerup", mm(42.2, 30));
+  check("a panel sticks to a page guide", boxes().A[0] === 2);
+
+  // --- arrange -------------------------------------------------------------------------
+  posted.length = 0;
+  await el("arrange").onclick();
+  check("arranging sends the draft and takes the answer as a new draft",
+        posted.length === 1 && boxes().A.join() === "0,0,89.5,62");
+  check("the report is shown", el("report").textContent.includes("96%"));
+  el("revert").onclick();
+  check("revert restores the boxes and the guides",
+        guides().length === 1 && boxes().A.join() === "0,0,89.5,62");
   process.exit(failures ? 1 : 0);
 });

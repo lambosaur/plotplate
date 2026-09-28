@@ -36,6 +36,9 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 | The optimizer's limit is a distortion factor, and what the limit costs is reported. | How much a panel may grow changes how the figure reads, so the tool states the trade-off (`--max-stretch 1.48 would fill it`) rather than choosing it. |
 | An explicitly requested size is an error when unreachable; the current size bends. | A number the user typed is a promise; the default is only a default. |
 | All files are tracked on every branch (`main`, `dev`, features). | Git cannot keep per-branch file sets maintainably, and installations never include development files. |
+| Page guides are unnamed numbers, separate from `guides:`. | A guide an axes is placed against is a reference and needs a name; a line you arrange panels against is scaffolding, and naming it would suggest something depends on it. Deleting a page guide can never break a layout. |
+| The page's *arrange* button answers with boxes and writes nothing. | The optimizer is the same code the command runs, so the button cannot drift from it; and its result arriving as an edit (not a file) keeps one rule in the editor: only *save* writes. |
+| Boxes are brought back inside the figure before being optimized. | A box dragged over the edge is a mistake, not an arrangement. Optimized as it stands, it pulls the grid boundary out with it and squashes every other panel to make the total fit. |
 | The viewer can move boxes (`--edit`), but only saves `layout.<name>.yaml`. | Nudging a box is the commonest edit there is, and a round trip through a drawing program costs more than the edit. Writing back the maintained `layout.yaml` would replace its comments, `mosaic:` and journal widths with numbers, so the page saves a variant and the author copies it over. |
 | Inkscape SVG import only updates boxes. | Drawing tools are good for geometry. Style, guides and grid settings stay in YAML. |
 | Text is kept as text (PDF Type 42, SVG `fonttype: none`). | Journals require editable, embedded fonts. |
@@ -115,8 +118,8 @@ decision.
 - `plotplate from-pdf` records clipped `\includegraphics` (trim, clip) at their unclipped size.
 - Illustrator and Inkscape PDF exports were not tested (no licence or package available here);
   [layout-sources.md](layout-sources.md) states the expected behaviour.
-- The page's editing is panel boxes only: no axes, no guides, no undo beyond *revert*, and no
-  editing of a layout the server did not read (it always saves a full variant).
+- The page's editing is panel boxes only: no axes, no guides, no undo beyond *revert*, and no editing
+  of a layout the server did not read (it always saves a full variant).
 - `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the
   user) decides how drawing code moves.
 - Panel letters in the LaTeX output use the document font; set `\plotplatePanelLabel` to Arial (for

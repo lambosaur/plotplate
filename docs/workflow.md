@@ -246,20 +246,33 @@ It binds to 127.0.0.1 and uses only the Python standard library.
 plotplate view figures/figure_1 --edit
 ```
 
-Without `--edit` the page is read-only. With it, panel boxes can be moved and resized:
+Without `--edit` the page is read-only.
+With it, panel boxes can be moved and resized:
 
-- drag a panel to move it, drag a corner to resize it; edges stick to the other panels, to the figure
-  and to the guides when they come within 1.5 mm, and holding **shift** ignores that;
+- drag a panel to move it, drag a corner to resize it; edges stick to the figure, to the guides, to
+  the other panels **and to one gutter away from them**, so a panel lands at a real 4 mm gutter rather
+  than flush against its neighbour.
+  The reach is about five screen pixels, so it feels the same at any zoom, and holding **shift**
+  ignores it;
 - the arrow keys nudge the selected panel by 0.5 mm (2 mm with shift), and the four number fields set
   its box exactly;
 - axes follow their panel the same way `plotplate optimize` moves them: the margins that hold tick
   labels keep their millimetres, and the plotting area takes the rest;
+- **+ |** and **+ –** add a page guide, which you then drag anywhere on the sheet (delete removes the
+  selected one).
+  Panels stick to page guides, which is how two panels in different rows are put on the same line;
+  they are saved with the layout ([layout-spec.md](layout-spec.md#page-guides));
+- **arrange** runs the optimizer on what is currently on the page: panels dragged off the figure are
+  put back, gutters are evened out, and the white space goes back to the panels.
+  Nothing is written — the result arrives as another edit, so it can be nudged further, reverted, or
+  saved;
 - **save** writes `layout.<name>.yaml` — a resolved layout, the same thing `optimize` writes.
 
 `layout.yaml` is never written: its comments, its `mosaic:` and its journal widths do not survive
 being written back as numbers, so what you drag is saved beside it and you copy it over when you are
-happy with it. Anything a drag cannot express — adding a panel, drawing an annotation, reshaping a
-figure by hand — belongs in the layout file or in Inkscape through
+happy with it.
+Anything a drag cannot express — adding a panel, drawing an annotation, reshaping a figure by hand —
+belongs in the layout file or in Inkscape through
 [`svg-export` / `svg-import`](layout-sources.md#from-a-drawing).
 
 ### Does it line up?

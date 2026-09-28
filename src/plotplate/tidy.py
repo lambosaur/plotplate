@@ -182,6 +182,9 @@ def scale_layout(data: dict[str, Any], width: float) -> dict[str, Any]:
         if isinstance(label, dict) and label.get("offset") is not None:
             label["offset"] = [round(float(v) * factor, 2) for v in label["offset"]]
     for axis in ("x", "y"):
+        page_guides = (data.get("page_guides") or {}).get(axis)
+        if page_guides:
+            data["page_guides"][axis] = [round(float(v) * factor, 2) for v in page_guides]
         guides = (data.get("guides") or {}).get(axis) or {}
         for name in guides:
             guides[name] = round(float(guides[name]) * factor, 2)
