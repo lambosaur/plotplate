@@ -271,10 +271,16 @@ With it, panel boxes can be moved and resized:
   promise are one thing;
 - **+ panel** draws one more box, named after the next free letter: enough to sketch a whole figure
   before any of it is written.
+  It counts as a panel straight away — *arrange* includes it, and saving writes it out;
+- **renumber** hands out the letters in reading order (rows first, then left to right), which is what
+  a panel inserted between two others needs.
+  All the renames happen at once, so panels can swap letters; where the panel's *name* is its letter
+  and nothing has been drawn yet, the names are renumbered too, and otherwise only the letters are.
   **letter** changes what the reader sees; **name** changes the panel's identity, which is also the
   name of `panels/A.pdf` and of the code that draws it.
   Renaming a panel that has already been drawn is refused, naming the files it would orphan — use
-  `plotplate merge <layout> A --as S1` and rename the panel code, or change only the letter;
+  `plotplate merge <layout> A --as S1` and rename the panel code, or change only the letter.
+  Saved layouts are written in reading order, whatever order the panels were drawn in;
 - **undo** and **redo** (`ctrl-Z`, `ctrl-shift-Z`) step through everything the page holds — boxes,
   guides, locks, letters, renames, added panels — and a whole drag counts as one step.
   The history goes back as far as the last save, and *revert* can itself be undone;

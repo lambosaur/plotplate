@@ -75,6 +75,18 @@ const guides = () => el("paper").children.flatMap(function lines(node) {
     .concat(node.children.flatMap(lines));
 }).map(node => node.attrs);
 
+// The letter a panel is drawn with: the bold text sitting in its top-left corner.
+const texts = () => el("paper").children.flatMap(function walk(node) {
+  return (node.tag === "text" ? [node] : []).concat(node.children.flatMap(walk));
+});
+const letterOn = name => {
+  const rect = boxes()[name];
+  const found = texts().find(node => node.attrs["font-weight"] === "bold"
+    && Math.abs(node.attrs.x - (rect[0] + 1.5)) < 0.01
+    && Math.abs(node.attrs.y - (rect[1] + 5)) < 0.01);
+  return found && found.textContent;
+};
+
 const boxes = () => Object.fromEntries(el("paper").rects()
   .filter(rect => rect.attrs["data-panel"])
   .map(rect => [rect.attrs["data-panel"],
@@ -196,11 +208,25 @@ setImmediate(async () => {
   pointer("pointerup", mm(34, boxes().D[1] + 5));
   check("the new panel moves", boxes().D[0] === 4);
 
+  // the added panel is part of what arrange is asked about, before any of it is saved
+  posted.length = 0;
+  await el("arrange").onclick();
+  check("arrange is told about the panel that exists only on the page",
+        Object.keys(posted[0].panels).includes("D"));
+  el("undo").onclick();                               // take that arrangement back
+
+  // D sits above C, so renumbering in reading order swaps the two letters
+  check("the new panel carries the letter it was given", letterOn("D") === "d");
+  el("renumber").onclick();
+  check("letters follow the boxes, not the order they were made in",
+        letterOn("D") === "C" && letterOn("C") === "D" && letterOn("A") === "A");
+
   posted.length = 0;
   await el("save").onclick();
   const sent = posted[0].panels;
-  check("the save carries the box, the lock and the letter",
-        sent.A.locked === true && sent.D.box.length === 4 && sent.D.label === "d");
+  check("the save carries the box, the lock and the renames",
+        sent.A.locked === true && sent.D.box.length === 4
+        && sent.C.rename === "D" && sent.D.rename === "C");
 
   // --- a guide dragged off the sheet is removed --------------------------------------------
   el("guide-y").onclick();

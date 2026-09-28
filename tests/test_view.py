@@ -367,3 +367,54 @@ def test_arrange_respects_the_guides_on_the_page_before_they_are_saved(editable)
     for box in answer["panels"].values():
         crosses = box[0] < layout.width / 2 - 10.01 and box[0] + box[2] > layout.width / 2 - 9.99
         assert not crosses or box[0] == 0  # only something already spanning it still does
+
+
+def test_a_panel_added_on_the_page_is_arranged_with_the_others(editable):
+    """A box that exists only on the page is a panel to the optimizer, before any save."""
+    base, _layout = editable
+    answer = post(
+        base + "optimize",
+        {"panels": {"C": [0, 62, 60, 40]}},  # C is not in the layout yet
+    )
+    assert set(answer["panels"]) == {"A", "B", "C"}
+    assert answer["panels"]["C"][3] > 0
+
+
+def test_panels_can_be_renumbered_in_one_pass(editable):
+    """Renaming is a permutation: C becomes D while the new D becomes C, without colliding."""
+    base, layout = editable
+    answer = post(
+        base + "save",
+        {
+            "variant": "custom",
+            "panels": {
+                "A": {"rename": "B"},
+                "B": {"rename": "A", "box": [0, 0, 60, 40]},
+            },
+        },
+    )
+    assert answer["saved"] == "layout.custom.yaml"
+    saved = pp.Layout.load(layout.path.with_name("layout.custom.yaml"))
+    assert saved.panels["A"].box.to_list() == [0, 0, 60, 40]  # what was B is now A
+    assert saved.panels["B"].box == layout.panels["A"].box  # ... and what was A is now B
+
+
+def test_two_panels_cannot_be_given_the_same_name(editable):
+    base, layout = editable
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        post(
+            base + "save",
+            {"variant": "custom", "panels": {"A": {"rename": "X"}, "B": {"rename": "X"}}},
+        )
+    assert "cannot both be called" in caught.value.read().decode()
+    assert not layout.path.with_name("layout.custom.yaml").exists()
+
+
+def test_saved_panels_are_written_in_reading_order(editable):
+    base, layout = editable
+    post(
+        base + "save",
+        {"variant": "custom", "panels": {"C": {"box": [0, 70, 80, 40]}, "A": [0, 0, 80, 60]}},
+    )
+    saved = pp.config.load_yaml(layout.path.with_name("layout.custom.yaml"))
+    assert list(saved["panels"]) == ["A", "B", "C"]  # the new one went where its box puts it

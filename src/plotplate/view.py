@@ -126,6 +126,7 @@ PAGE = """<!doctype html>
       <button id="guide-x" title="a vertical page guide">+ |</button>
       <button id="guide-y" title="a horizontal page guide">+ &ndash;</button>
       <button id="add" title="one more panel, where there is room">+ panel</button>
+      <button id="renumber" title="letters in reading order">renumber</button>
       <button id="arrange" title="even the gutters and spend the white space">arrange</button>
     </div>
     <div class="row">
@@ -169,6 +170,11 @@ const dirty = () => guidesMoved()
   || [draft, locks, letters, renames, extra].some(held => Object.keys(held).length > 0);
 const boxOf = p => draft[p.name] || p.box;
 const lockedOf = p => (locks[p.name] === undefined ? !!p.locked : locks[p.name]);
+// With `labels: id` the panel's name is its letter, so a rename that has not been saved yet
+// is already what the reader would see.
+const letterOf = p => letters[p.name] !== undefined ? letters[p.name]
+  : (state.labels !== "auto" && renames[p.name]) ? renames[p.name]
+  : (p.label || p.name);
 // The panels of the active layout, plus the ones drawn on the page and not saved yet.
 const panelsNow = () => (state.panels || []).concat(
   Object.entries(extra).map(([name, box]) => ({name, label: letters[name] || name, box, axes: []})));
@@ -249,7 +255,7 @@ function drawLayout(layer, data) {
                         stroke: locked ? "#475569" : "#1d4ed8", "stroke-width": lit ? 1 : .4,
                         "stroke-dasharray": locked ? "2 1.5" : "none",
                         "data-panel": p.name});
-      const letter = letters[p.name] !== undefined ? letters[p.name] : p.label;
+      const letter = letterOf(p);
       if (letter)
         node(layer, "text", {x: rect[0] + 1.5, y: rect[1] + 5, "font-size": 4,
                              fill: locked ? "#475569" : "#1d4ed8", "font-weight": "bold"}, letter);
@@ -465,6 +471,32 @@ function addPanel() {
   render();
 }
 
+// Letters in reading order: rows first (within 5 mm of each other), then left to right --
+// the same rule `labels: auto` uses. Where the name *is* the letter and nothing has been
+// drawn yet, the panels are renamed; otherwise only the letters change, since a name that
+// already has a file behind it belongs to the figure's code.
+function renumber() {
+  remember();
+  const order = panelsNow().slice().sort((one, other) => {
+    const a = boxOf(one), b = boxOf(other);
+    return (Math.round(a[1] / 5) - Math.round(b[1] / 5)) || (a[0] - b[0]);
+  });
+  const sample = (state.panels[0] || {}).label || "A";
+  const lower = sample === sample.toLowerCase();
+  const rekey = state.labels !== "auto" && panelsNow().every(p => !p.drawn);
+  order.forEach((p, index) => {
+    const letter = index < 26 ? String.fromCharCode(65 + index) : "P" + (index + 1);
+    const text = lower ? letter.toLowerCase() : letter;
+    if (rekey) {
+      renames[p.name] = text;
+      delete letters[p.name];  // renumbering is explicit: it replaces a letter set by hand
+    } else {
+      letters[p.name] = text;
+    }
+  });
+  render();
+}
+
 function dropGuide(record = true) {
   if (record) remember();  // dragging one off the sheet already recorded the drag
   rulers[pickedGuide.axis].splice(pickedGuide.index, 1);
@@ -553,8 +585,7 @@ function renderEdit() {
   }
   for (const key of ["f-key", "f-letter", "f-lock"]) el(key).disabled = !panel;
   el("f-key").value = panel ? (renames[panel.name] || panel.name) : "";
-  el("f-letter").value = panel
-    ? (letters[panel.name] !== undefined ? letters[panel.name] : (panel.label || "")) : "";
+  el("f-letter").value = panel ? letterOf(panel) : "";
   el("f-lock").checked = panel ? lockedOf(panel) : false;
   el("undo").disabled = !past.length;
   el("redo").disabled = !future.length;
@@ -641,7 +672,7 @@ function render() {
     li.innerHTML = (editing()
         ? `<input type="checkbox" data-lock="${p.name}" title="locked"`
           + `${lockedOf(p) ? " checked" : ""}> ` : "")
-      + `<b>${letters[p.name] !== undefined ? letters[p.name] : (p.label || p.name)}</b> `
+      + `<b>${letterOf(p)}</b> `
       + `${p.name !== p.label ? (renames[p.name] || p.name) : ""}`
       + `<span class="mm"> ${rect.map(v => Number(v).toFixed(1)).join(", ")}`
       + `${p.axes.length ? " · " + p.axes.map(a => a.name).join(", ") : ""}</span>`;
@@ -687,7 +718,7 @@ async function arrange() {
   try {
     const answer = await (await fetch("optimize", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({layout: active, panels: draft, page_guides: rulers,
+      body: JSON.stringify({layout: active, panels: {...draft, ...extra}, page_guides: rulers,
                             locked: panelsNow().filter(lockedOf).map(p => p.name)}),
     })).json();
     if (answer.error) {
@@ -697,7 +728,10 @@ async function arrange() {
     }
     // The result is another edit, not a saved layout: it can be nudged, undone or saved.
     remember();
-    for (const [name, rect] of Object.entries(answer.panels)) draft[name] = rect;
+    for (const [name, rect] of Object.entries(answer.panels)) {
+      if (extra[name]) extra[name] = rect;  // one that is not in any file yet
+      else draft[name] = rect;
+    }
     el("report").className = "mm";
     el("report").textContent =
       [answer.summary, ...answer.notes.map(note => note.message)].join(" — ");
@@ -847,6 +881,7 @@ el("arrange").onclick = arrange;
 el("undo").onclick = undo;
 el("redo").onclick = redo;
 el("add").onclick = addPanel;
+el("renumber").onclick = renumber;
 el("f-key").addEventListener("change", () => {
   if (picked) remember();
   if (picked) renames[picked] = el("f-key").value.trim();
@@ -924,6 +959,24 @@ def _set_lock(data: dict[str, Any], name: str, locked: bool) -> None:
         data["optimize"].pop("panels")
         if not data["optimize"]:
             data.pop("optimize")
+
+
+def _reading_order(panels: dict[str, Any]) -> dict[str, Any]:
+    """The panels sorted the way a reader goes through them: rows first, then left to right.
+
+    A panel added or moved on the page ends up wherever the editing put it, which is no order
+    at all. Saving it in reading order is what makes the file legible, and it is the order
+    ``labels: auto`` hands out letters by.
+    """
+    boxes = {
+        name: Rect.from_list(entry["box"])
+        for name, entry in panels.items()
+        if isinstance(entry, dict) and entry.get("box") is not None
+    }
+    if len(boxes) != len(panels):  # something is placed by a mosaic: leave the order alone
+        return panels
+    order = sorted(boxes, key=lambda name: (round(boxes[name].top / 5), boxes[name].left, name))
+    return {name: panels[name] for name in order}
 
 
 def _panel_edit(name: str, value: Any) -> dict[str, Any]:
@@ -1077,6 +1130,9 @@ class Viewer:
         lines = rule_lines(features, rules)
         sheet = layout.sheet_geometry(self.paper)
         target = Target.from_layout(layout)
+        drawn = {
+            path.stem for path in layout.panels_dir.glob("*") if path.is_file()
+        }  # a panel with a file of its own cannot be renamed here
         return {
             **common,
             "name": layout.name,
@@ -1093,6 +1149,7 @@ class Viewer:
                 "caption": sheet.caption,
                 "assumed": sheet.assumed,
             },
+            "labels": str(layout.raw.get("labels", "id")).lower(),
             "guides": layout.guides,
             "page_guides": layout.page_guides
             if (layout.page_guides["x"] or layout.page_guides["y"])
@@ -1104,6 +1161,7 @@ class Viewer:
                     "name": name,
                     "label": spec.label,
                     "locked": name in target.freeze,
+                    "drawn": name in drawn,
                     "box": spec.box.to_list(),
                     "axes": [
                         {"name": axes.name, "box": rect.to_list()}
@@ -1154,7 +1212,6 @@ class Viewer:
             ValueError: the name, a box, a new panel or a rename cannot be used.
         """
         from .config import dump_yaml
-        from .pack import place_boxes
 
         if not self.editable:
             raise PermissionError("this viewer is read-only; start it with `plotplate view --edit`")
@@ -1167,6 +1224,29 @@ class Viewer:
             )
         layout = self.layout(key)
         edits = {name: _panel_edit(name, value) for name, value in panels.items()}
+        data = self._drafted(layout, edits)
+        self._apply_panel_edits(data, layout, edits)
+        data["panels"] = _reading_order(data["panels"])
+        if guides is not None:
+            kept = _inside_sheet(_checked_guides(guides), layout.sheet_geometry(self.paper))
+            data["page_guides"] = kept
+            if not (kept["x"] or kept["y"]):
+                data.pop("page_guides")
+        path = variant_path(self.path(key), variant)
+        dump_yaml(data, path)
+        return path
+
+    def _drafted(self, layout: Layout, edits: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        """The layout with the page's boxes in it: moved panels placed, new ones added.
+
+        Both saving and arranging start here, so a panel drawn on the page is a panel to the
+        optimizer before it has been written to a file.
+
+        Raises:
+            ValueError: a new panel has no usable name or no box.
+        """
+        from .pack import place_boxes
+
         old = {name: spec.box for name, spec in layout.panels.items()}
         fresh = {name: edit for name, edit in edits.items() if name not in old}
         for name, edit in fresh.items():
@@ -1183,15 +1263,7 @@ class Viewer:
         place_boxes(data, layout, old, {**old, **moved})
         for name, edit in fresh.items():  # a panel drawn on the page for the first time
             data["panels"][name] = {"box": edit["box"].to_list()}
-        self._apply_panel_edits(data, layout, edits)
-        if guides is not None:
-            kept = _inside_sheet(_checked_guides(guides), layout.sheet_geometry(self.paper))
-            data["page_guides"] = kept
-            if not (kept["x"] or kept["y"]):
-                data.pop("page_guides")
-        path = variant_path(self.path(key), variant)
-        dump_yaml(data, path)
-        return path
+        return data
 
     def _apply_panel_edits(
         self, data: dict[str, Any], layout: Layout, edits: dict[str, dict[str, Any]]
@@ -1206,41 +1278,48 @@ class Viewer:
                 _set_label(data["panels"][name], str(edit["label"]))
             if edit["locked"] is not None:
                 _set_lock(data, name, bool(edit["locked"]))
-        for name, edit in edits.items():
-            if edit["rename"]:
-                self._rename_panel(data, layout, name, str(edit["rename"]).strip())
+        self._rename_panels(
+            data,
+            layout,
+            {name: str(edit["rename"]).strip() for name, edit in edits.items() if edit["rename"]},
+        )
 
-    def _rename_panel(self, data: dict[str, Any], layout: Layout, name: str, fresh: str) -> None:
-        """Give a panel another name, unless something has already been drawn under the old one.
+    def _rename_panels(self, data: dict[str, Any], layout: Layout, wanted: dict[str, str]) -> None:
+        """Apply every rename at once, so panels can swap or shift names in one step.
 
-        A panel's name is the name of its file (``panels/A.pdf``) and of whatever draws it, so
-        renaming one that exists only on paper is free, and renaming one that has been drawn is
-        a change to the figure's code that this page cannot make.
+        Renumbering a figure moves several names at the same time (``D`` becomes ``E`` while
+        the new panel becomes ``D``), which no sequence of single renames can do without
+        colliding with itself. The whole mapping is checked first and applied in one pass.
 
         Raises:
-            ValueError: the name is not usable, is taken, or the panel is already drawn.
+            ValueError: a name is not usable, two panels want the same one, a name outside the
+                mapping is taken, or a panel has already been drawn under its old name.
         """
-        if not PANEL_NAME.fullmatch(fresh):
-            raise ValueError(f"{fresh!r} is not a panel name (letters, digits, - and _)")
-        if fresh in data["panels"]:
-            raise ValueError(f"this figure already has a panel called {fresh!r}")
-        drawn = sorted(p.name for p in layout.panels_dir.glob(f"{name}.*"))
-        if drawn:
-            raise ValueError(
-                f"{name} is already drawn ({', '.join(drawn)}): renaming it here would leave "
-                f"those files behind. To change only the letter, set it in this panel's `letter` "
-                f"field; to change the name, use `plotplate merge <layout> {name} --as {fresh}` "
-                f"and rename the panel code with it"
-            )
-        # Rebuilt rather than popped and re-added: panels are written in reading order, which is
-        # what `labels: auto` hands out letters by, so a renamed panel keeps its place.
-        data["panels"] = {
-            (fresh if key == name else key): entry for key, entry in data["panels"].items()
-        }
-        frozen = (data.get("optimize") or {}).get("panels") or {}
-        if name in frozen:
+        mapping = {old: fresh for old, fresh in wanted.items() if fresh and fresh != old}
+        if not mapping:
+            return
+        for old, fresh in mapping.items():
+            if not PANEL_NAME.fullmatch(fresh):
+                raise ValueError(f"{fresh!r} is not a panel name (letters, digits, - and _)")
+            drawn = sorted(p.name for p in layout.panels_dir.glob(f"{old}.*"))
+            if drawn:
+                raise ValueError(
+                    f"{old} is already drawn ({', '.join(drawn)}): renaming it here would leave "
+                    f"those files behind. To change only what the reader sees, set the letter; to "
+                    f"change the name, use `plotplate merge <layout> {old} --as {fresh}` and "
+                    f"rename the panel code with it"
+                )
+        taken = [fresh for fresh in mapping.values() if list(mapping.values()).count(fresh) > 1]
+        if taken:
+            raise ValueError(f"two panels cannot both be called {min(taken)!r}")
+        collides = set(mapping.values()) & (set(data["panels"]) - set(mapping))
+        if collides:
+            raise ValueError(f"this figure already has a panel called {min(collides)!r}")
+        data["panels"] = {mapping.get(name, name): entry for name, entry in data["panels"].items()}
+        frozen = (data.get("optimize") or {}).get("panels")
+        if frozen:
             data["optimize"]["panels"] = {
-                (fresh if key == name else key): entry for key, entry in frozen.items()
+                mapping.get(name, name): entry for name, entry in frozen.items()
             }
 
     def arrange(
@@ -1263,18 +1342,22 @@ class Viewer:
         """
         from dataclasses import replace
 
-        from .pack import Target, bring_inside, optimize, place_boxes
+        from .pack import Target, bring_inside, optimize
 
         if not self.editable:
             raise PermissionError("this viewer is read-only; start it with `plotplate view --edit`")
         layout = self.layout(key)
-        old = {name: spec.box for name, spec in layout.panels.items()}
-        new = {**old, **{name: _checked_rect(name, value) for name, value in boxes.items()}}
-        new = bring_inside(new, layout.width, layout.height)
-        data = layout.resolved()
+        edits = {name: _panel_edit(name, value) for name, value in boxes.items()}
+        inside = bring_inside(
+            {name: edit["box"] for name, edit in edits.items() if edit["box"] is not None},
+            layout.width,
+            layout.height,
+        )
+        for name, box in inside.items():
+            edits[name]["box"] = box
+        data = self._drafted(layout, edits)
         if guides is not None:  # the guides on the page, which may not be saved yet
             data["page_guides"] = _checked_guides(guides)
-        place_boxes(data, layout, old, new)
         # The same file path as the layout it came from: style files, journal presets and panel
         # files are all resolved relative to it, and a draft that forgot where it lives cannot
         # even be read (`../style.yaml` would be looked for next to the working directory).
