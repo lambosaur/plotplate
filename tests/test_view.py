@@ -168,7 +168,8 @@ def test_a_read_only_viewer_refuses_to_save(served):
     ("payload", "says"),
     [
         ({"variant": "../escape", "panels": {}}, "not a variant name"),
-        ({"variant": "custom", "panels": {"Z": [0, 0, 10, 10]}}, "not a panel"),
+        ({"variant": "custom", "panels": {"../z": [0, 0, 10, 10]}}, "not a panel name"),
+        ({"variant": "custom", "panels": {"Z": {"locked": True}}}, "has no box"),
         ({"variant": "custom", "panels": {"A": [0, 0, 0.2, 40]}}, "1 x 1 mm"),
         ({"variant": "custom", "panels": {"A": ["a", 0, 10, 10]}}, "four numbers"),
     ],
@@ -259,4 +260,97 @@ def test_a_layout_that_declares_no_axes_shows_none(tmp_path):
     state = Viewer(tmp_path).state()
     assert [p["axes"] for p in state["panels"]] == [[], []]
     assert state["features"] == [] and state["rules"] == []  # nothing measured, nothing to check
-    assert state["guides"] == {"x": {}, "y": {}} and state["page_guides"] == {"x": [], "y": []}
+    assert state["guides"] == {"x": {}, "y": {}}
+    # ... but the page still offers the four margins to arrange those boxes against
+    assert state["page_guides_from_margins"] is True
+    assert state["page_guides"]["y"] == [0.0, 247.0]
+
+
+def test_the_page_starts_from_the_margins_when_the_layout_has_no_guides(editable):
+    """Four page guides, one per margin: the lines a figure is arranged against first."""
+    base, _layout = editable
+    state = json.loads(fetch(base + "state.json"))
+    sheet = state["sheet"]
+    assert state["page_guides_from_margins"] is True
+    assert state["page_guides"]["x"] == [
+        round(sheet["text"][0] - sheet["area"][0], 2),
+        round(sheet["text"][0] + sheet["text"][2] - sheet["area"][0], 2),
+    ]
+    assert state["page_guides"]["y"][0] == round(sheet["text"][1] - sheet["area"][1], 2)
+
+    post(base + "save", {"variant": "custom", "panels": {}, "page_guides": {"x": [12], "y": []}})
+    other = json.loads(fetch(base + "state.json?layout=custom"))
+    assert other["page_guides"] == {"x": [12.0], "y": []}  # declared ones win over the margins
+    assert other["page_guides_from_margins"] is False
+
+
+def test_a_guide_dragged_off_the_sheet_is_dropped(editable):
+    base, layout = editable
+    post(
+        base + "save",
+        {"variant": "custom", "panels": {}, "page_guides": {"x": [12, -400], "y": [9000]}},
+    )
+    saved = pp.Layout.load(layout.path.with_name("layout.custom.yaml"))
+    assert saved.page_guides == {"x": [12.0], "y": []}
+
+
+def test_a_panel_can_be_locked_from_the_page(editable):
+    """The page's lock is the optimizer's freeze: one promise, kept by both."""
+    base, layout = editable
+    post(base + "save", {"variant": "custom", "panels": {"A": {"locked": True}}})
+    saved = pp.config.load_yaml(layout.path.with_name("layout.custom.yaml"))
+    assert saved["optimize"]["panels"]["A"] == {"freeze": True}
+    assert json.loads(fetch(base + "state.json?layout=custom"))["panels"][0]["locked"] is True
+
+    answer = post(base + "optimize", {"layout": "custom", "panels": {}, "locked": ["A"]})
+    before = layout.panels["A"].box
+    assert answer["panels"]["A"][2:] == [before.w, before.h]  # kept its size
+
+    post(base + "save", {"layout": "custom", "variant": "free", "panels": {"A": {"locked": False}}})
+    assert "optimize" not in pp.config.load_yaml(layout.path.with_name("layout.free.yaml"))
+
+
+def test_a_panel_can_be_added_and_given_a_letter(editable):
+    base, layout = editable
+    post(
+        base + "save",
+        {"variant": "custom", "panels": {"C": {"box": [0, 62, 88, 40], "label": "c"}}},
+    )
+    saved = pp.Layout.load(layout.path.with_name("layout.custom.yaml"))
+    assert saved.panels["C"].box.to_list() == [0, 62, 88, 40]
+    assert saved.panels["C"].label == "c"
+    assert list(saved.panels) == ["A", "B", "C"]
+
+
+def test_renaming_is_allowed_until_the_panel_has_been_drawn(editable, tmp_path):
+    base, layout = editable
+    post(base + "save", {"variant": "custom", "panels": {"A": {"rename": "S1"}}})
+    saved = pp.Layout.load(layout.path.with_name("layout.custom.yaml"))
+    assert list(saved.panels) == ["S1", "B"]  # in place: reading order is what letters follow
+
+    (layout.panels_dir).mkdir(exist_ok=True)
+    (layout.panels_dir / "B.pdf").write_bytes(b"%PDF-1.4\n")
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        post(base + "save", {"variant": "other", "panels": {"B": {"rename": "S2"}}})
+    message = caught.value.read().decode()
+    assert "already drawn" in message and "B.pdf" in message
+
+
+def test_arrange_reads_the_styles_of_the_layout_it_came_from(tmp_path):
+    """A draft must know where it lives: `style_files: [../style.yaml]` is relative to it."""
+    from plotplate.config import dump_yaml
+
+    dump_yaml({"font": {"size": 7}}, tmp_path / "style.yaml")
+    figure = tmp_path / "figure"
+    figure.mkdir()
+    dump_yaml(
+        {
+            "schema": 1,
+            "style_files": ["../style.yaml"],
+            "area": {"width": 180, "height": 60},
+            "panels": {"A": {"box": [0, 0, 88, 60]}, "B": {"box": [92, 0, 88, 60]}},
+        },
+        figure / "layout.yaml",
+    )
+    answer = Viewer(figure, "a4", editable=True).arrange(None, {"A": [0, 0, 80, 55]})
+    assert set(answer["panels"]) == {"A", "B"}

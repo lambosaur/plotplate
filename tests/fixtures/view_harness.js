@@ -157,14 +157,58 @@ setImmediate(async () => {
   pointer("pointerup", mm(42.2, 30));
   check("a panel sticks to a page guide", boxes().A[0] === 2);
 
+  // --- locking, adding, renaming ---------------------------------------------------------
+  pointer("pointerdown", mm(40, 30));                 // select A and lock it
+  el("f-lock").checked = true;
+  el("f-lock").fire("change");
+  check("locking clears the selection", el("f-x").disabled || !el("picked").innerHTML.match(/<b>A/));
+  const before = boxes().A.join();
+  pointer("pointerdown", mm(40, 30));                 // ... and now it cannot be dragged
+  pointer("pointermove", mm(52, 38));
+  pointer("pointerup", mm(52, 38));
+  check("a locked panel does not move", boxes().A.join() === before);
+  check("a locked panel is drawn differently",
+        el("paper").rects().some(r => r.attrs["data-panel"] === "A"
+                                      && r.attrs["stroke-dasharray"] !== "none"));
+
+  el("add").onclick();
+  check("a panel can be added", Object.keys(boxes()).length === 4 && boxes().D);
+  check("it is selected, and named after the next free letter", el("f-key").value === "D");
+  el("f-letter").value = "d";
+  el("f-letter").fire("change");
+  pointer("pointerdown", mm(30, boxes().D[1] + 5));   // the new panel drags like any other
+  pointer("pointermove", mm(34, boxes().D[1] + 5));
+  pointer("pointerup", mm(34, boxes().D[1] + 5));
+  check("the new panel moves", boxes().D[0] === 4);
+
+  posted.length = 0;
+  await el("save").onclick();
+  const sent = posted[0].panels;
+  check("the save carries the box, the lock and the letter",
+        sent.A.locked === true && sent.D.box.length === 4 && sent.D.label === "d");
+
+  // --- a guide dragged off the sheet is removed --------------------------------------------
+  el("guide-y").onclick();
+  const kept = guides().length;
+  pointer("pointerdown", mm(60, boxes().C ? state.height / 2 : 60));
+  pointer("pointermove", [105, 320]);                 // below the bottom of the A4 sheet
+  pointer("pointerup", [105, 320]);
+  check("dragging a guide off the sheet removes it", guides().length === kept - 1);
+
   // --- arrange -------------------------------------------------------------------------
+  pointer("pointerdown", mm(40, 30));                 // lock A again: saving cleared the edits
+  el("f-lock").checked = true;
+  el("f-lock").fire("change");
   posted.length = 0;
   await el("arrange").onclick();
-  check("arranging sends the draft and takes the answer as a new draft",
-        posted.length === 1 && boxes().A.join() === "0,0,89.5,62");
+  check("arranging sends the draft, the locks included",
+        posted.length === 1 && posted[0].locked.join() === "A");
+  check("the answer becomes the new draft", boxes().A.join() === "0,0,89.5,62");
   check("the report is shown", el("report").textContent.includes("96%"));
   el("revert").onclick();
-  check("revert restores the boxes and the guides",
-        guides().length === 1 && boxes().A.join() === "0,0,89.5,62");
+  check("revert puts everything back: boxes, guides, locks and added panels",
+        guides().length === 1 && Object.keys(boxes()).length === 3
+        && boxes().A.join() === "0,0,89.5,62"
+        && el("paper").rects().every(r => r.attrs["stroke-dasharray"] !== "2 1.5"));
   process.exit(failures ? 1 : 0);
 });

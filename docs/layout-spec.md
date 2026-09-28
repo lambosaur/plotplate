@@ -131,6 +131,9 @@ are for: putting two panels in different rows on the same line.
 Add, move and remove them on the page with `plotplate view … --edit`, or write them here by hand.
 They scale with the figure (`plotplate tidy --width`), and they travel with the layout that declares
 them.
+A layout with no `page_guides:` is shown with four — the margins of the sheet, which are the lines a
+figure is arranged against first; they become part of the file as soon as you save.
+A guide that ends up outside the sheet is dropped rather than stored where nothing can reach it.
 For lines an axes is actually *placed against*, use named `guides:` instead — the difference is in
 [alignment.md](alignment.md#three-kinds-of-line-and-when-they-disagree).
 

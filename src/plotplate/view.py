@@ -44,6 +44,8 @@ from .variants import BASE, find_layouts, variant_path
 
 #: What a variant may be called when the page saves one: a file name, not a path.
 VARIANT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}")
+#: What a panel added or renamed on the page may be called; it also becomes a file name.
+PANEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
 
 PAGE = """<!doctype html>
 <meta charset="utf-8">
@@ -112,11 +114,18 @@ PAGE = """<!doctype html>
       <label>h <input type="number" id="f-h" step="0.5"></label>
     </div>
     <div class="row">
+      <label>name <input id="f-key" size="5"></label>
+      <label>letter <input id="f-letter" size="3"></label>
+      <label title="locked panels cannot be dragged, and arrange keeps their size">
+        <input type="checkbox" id="f-lock"> locked</label>
+    </div>
+    <div class="row">
       <span class="mm">layout.</span><input id="name" value="custom"><span class="mm">.yaml</span>
     </div>
     <div class="row">
       <button id="guide-x" title="a vertical page guide">+ |</button>
       <button id="guide-y" title="a horizontal page guide">+ &ndash;</button>
+      <button id="add" title="one more panel, where there is room">+ panel</button>
       <button id="arrange" title="even the gutters and spend the white space">arrange</button>
     </div>
     <div class="row">
@@ -140,6 +149,7 @@ let stamp = null, state = null, active = null, compare = new Set(), hover = null
 let ppm = null;  // pixels per millimetre; null = fit the stage
 let draft = {}, picked = null, drag = null;  // editing: boxes moved but not saved yet
 let rulers = null, pickedGuide = null, movedGuides = false;  // the page guides being edited
+let locks = {}, letters = {}, renames = {}, extra = {};  // per panel, unsaved like the boxes
 let originMM = [0, 0], viewMM = [210, 297];  // what draw() last put in the viewBox
 // How close an edge has to come to stick: about five screen pixels, so it feels the same
 // whether the figure is drawn at 30 % or at 200 %, and never less than three quarters of a mm.
@@ -147,8 +157,13 @@ const snapMM = () => Math.max(0.75, 5 * viewMM[0] / el("paper").getBoundingClien
 const el = id => document.getElementById(id);
 const on = id => el(id).checked;
 const editing = () => !!(state && state.editable && !state.error);
-const dirty = () => Object.keys(draft).length > 0 || movedGuides;
+const dirty = () => movedGuides
+  || [draft, locks, letters, renames, extra].some(held => Object.keys(held).length > 0);
 const boxOf = p => draft[p.name] || p.box;
+const lockedOf = p => (locks[p.name] === undefined ? !!p.locked : locks[p.name]);
+// The panels of the active layout, plus the ones drawn on the page and not saved yet.
+const panelsNow = () => (state.panels || []).concat(
+  Object.entries(extra).map(([name, box]) => ({name, label: letters[name] || name, box, axes: []})));
 
 function node(parent, tag, attrs, text) {
   const made = document.createElementNS(SV, tag);
@@ -217,16 +232,19 @@ function drawLayout(layer, data) {
       node(layer, "line", {x1: 0, y1: y, x2: data.width, y2: y, stroke: "#888",
                            "stroke-width": .3, "stroke-dasharray": "2 2"});
   }
-  for (const p of data.panels) {
+  for (const p of (data === state ? panelsNow() : data.panels)) {
     const rect = boxOf(p);
     const lit = p.name === hover || p.name === picked;
+    const locked = editing() && lockedOf(p);
     if (on("t-panels")) {
-      box(layer, rect, {fill: "#3b82f6", "fill-opacity": lit ? .22 : .07,
-                        stroke: "#1d4ed8", "stroke-width": lit ? 1 : .4,
+      box(layer, rect, {fill: locked ? "#64748b" : "#3b82f6", "fill-opacity": lit ? .22 : .07,
+                        stroke: locked ? "#475569" : "#1d4ed8", "stroke-width": lit ? 1 : .4,
+                        "stroke-dasharray": locked ? "2 1.5" : "none",
                         "data-panel": p.name});
-      if (p.label)
+      const letter = letters[p.name] !== undefined ? letters[p.name] : p.label;
+      if (letter)
         node(layer, "text", {x: rect[0] + 1.5, y: rect[1] + 5, "font-size": 4,
-                             fill: "#1d4ed8", "font-weight": "bold"}, p.label);
+                             fill: locked ? "#475569" : "#1d4ed8", "font-weight": "bold"}, letter);
     }
     if (on("t-axes")) {
       const rects = draft[p.name]
@@ -236,8 +254,8 @@ function drawLayout(layer, data) {
                        "stroke-dasharray": "1.5 1.5"});
     }
   }
-  if (editing() && picked && data.panels.some(p => p.name === picked))
-    drawHandles(layer, boxOf(data.panels.find(p => p.name === picked)));
+  const chosen = data === state && picked ? panelsNow().find(p => p.name === picked) : null;
+  if (editing() && chosen && !lockedOf(chosen)) drawHandles(layer, boxOf(chosen));
   if (on("t-measured"))
     for (const f of data.features) {
       if (f.kind === "mark") node(layer, "circle", {cx: f.x, cy: f.y, r: .8, fill: "#16a34a"});
@@ -280,16 +298,17 @@ function grab(at) {
         value => Math.abs(value - at[axis === "x" ? 0 : 1]) < near);
       if (index >= 0) return {mode: "guide", axis, index, at};
     }
-  const chosen = state.panels.find(p => p.name === picked);
+  const chosen = panelsNow().find(p => p.name === picked && !lockedOf(p));
   if (chosen) {
     const rect = boxOf(chosen);
     const hit = corners(rect).findIndex(
       c => Math.abs(c[0] - at[0]) < near && Math.abs(c[1] - at[1]) < near);
     if (hit >= 0) return {name: picked, mode: "resize", corner: hit, rect, at};
   }
-  const inside = state.panels.filter(p => {
+  const inside = panelsNow().filter(p => {
     const r = boxOf(p);
-    return at[0] >= r[0] && at[0] <= r[0] + r[2] && at[1] >= r[1] && at[1] <= r[1] + r[3];
+    return !lockedOf(p)
+      && at[0] >= r[0] && at[0] <= r[0] + r[2] && at[1] >= r[1] && at[1] <= r[1] + r[3];
   }).sort((a, b) => boxOf(a)[2] * boxOf(a)[3] - boxOf(b)[2] * boxOf(b)[3]);
   if (!inside.length) return null;
   return {name: inside[0].name, mode: "move", rect: boxOf(inside[0]), at};
@@ -302,7 +321,7 @@ function grab(at) {
 function magnets() {
   const xs = [0, state.width], ys = [0, state.height];
   const gap = state.gap || 0;
-  for (const p of state.panels) {
+  for (const p of panelsNow()) {
     if (p.name === (drag && drag.name)) continue;
     const r = boxOf(p);
     xs.push(r[0], r[0] + r[2], r[0] - gap, r[0] + r[2] + gap);
@@ -360,7 +379,8 @@ function moved(at, free) {
 const round2 = r => r.map(v => Math.round(v * 100) / 100);
 
 function edit(name, rect) {
-  draft[name] = round2(rect);
+  if (extra[name]) extra[name] = round2(rect);
+  else draft[name] = round2(rect);
   renderEdit();
   draw();
 }
@@ -380,6 +400,23 @@ function addGuide(axis) {
   movedGuides = true;
   renderEdit();
   draw();
+}
+
+// A free-ish spot for one more panel: under everything drawn so far, or the middle.
+function addPanel() {
+  const taken = new Set(panelsNow().map(p => p.name));
+  const letter = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].find(one => !taken.has(one))
+    || "P" + (taken.size + 1);
+  const gap = state.gap || 4;
+  const bottom = panelsNow().reduce((low, p) => Math.max(low, boxOf(p)[1] + boxOf(p)[3]), 0);
+  const top = bottom + gap < state.height - 20 ? bottom + gap : Math.round(state.height / 3);
+  const rect = [0, Math.round(top * 100) / 100,
+                Math.min(state.width, 60), Math.min(40, Math.max(20, state.height - top))];
+  extra[letter] = rect;
+  picked = letter;
+  pickedGuide = null;
+  renderEdit();
+  render();
 }
 
 function dropGuide() {
@@ -453,9 +490,10 @@ function draw() {
 function renderEdit() {
   el("edit").hidden = !editing();
   if (!editing()) return;
-  el("foot").textContent = "editing: drag or nudge with the arrow keys, hold shift to ignore "
-    + "the magnets. Saving writes layout.<name>.yaml, never layout.yaml";
-  const panel = state.panels.find(p => p.name === picked);
+  el("foot").textContent = "editing: drag, or nudge with the arrow keys; shift ignores the "
+    + "magnets; a locked panel stays put; a guide dragged off the sheet is removed. Saving "
+    + "writes layout.<name>.yaml, never layout.yaml";
+  const panel = panelsNow().find(p => p.name === picked);
   const rect = panel ? boxOf(panel) : null;
   el("picked").innerHTML = panel
     ? `<b>${panel.label || panel.name}</b> ${draft[panel.name] ? "moved" : "unchanged"}`
@@ -464,9 +502,14 @@ function renderEdit() {
         + `<b>${rulers[pickedGuide.axis][pickedGuide.index]} mm</b> — delete removes it`
       : "drag a panel to move it, its corners to resize it";
   for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries()) {
-    el(key).disabled = !rect;
+    el(key).disabled = !rect || lockedOf(panel || {});
     el(key).value = rect ? rect[i] : "";
   }
+  for (const key of ["f-key", "f-letter", "f-lock"]) el(key).disabled = !panel;
+  el("f-key").value = panel ? (renames[panel.name] || panel.name) : "";
+  el("f-letter").value = panel
+    ? (letters[panel.name] !== undefined ? letters[panel.name] : (panel.label || "")) : "";
+  el("f-lock").checked = panel ? lockedOf(panel) : false;
   const count = Object.keys(draft).length;
   el("saved").className = "mm" + (dirty() ? " dirty" : "");
   if (dirty())
@@ -496,6 +539,7 @@ function renderVariants() {
     input.addEventListener("change", () => {
       active = input.value;
       draft = {};
+      locks = {}; letters = {}; renames = {}; extra = {};
       picked = null;
       pickedGuide = null;
       movedGuides = false;
@@ -542,15 +586,27 @@ function render() {
   renderLayers();
   el("size").textContent = `${state.width} x ${state.height} mm`
     + (state.sheet ? ` on ${state.sheet.paper.toUpperCase()}` : "");
-  el("panels").replaceChildren(...(state.panels || []).map(p => {
+  el("panels").replaceChildren(...panelsNow().map(p => {
     const li = document.createElement("li");
-    li.innerHTML = `<b>${p.label || p.name}</b> ${p.name !== p.label ? p.name : ""}`
-      + `<span class="mm"> ${p.box.map(v => v.toFixed(1)).join(", ")}`
+    const rect = boxOf(p);
+    li.innerHTML = (editing()
+        ? `<input type="checkbox" data-lock="${p.name}" title="locked"`
+          + `${lockedOf(p) ? " checked" : ""}> ` : "")
+      + `<b>${letters[p.name] !== undefined ? letters[p.name] : (p.label || p.name)}</b> `
+      + `${p.name !== p.label ? (renames[p.name] || p.name) : ""}`
+      + `<span class="mm"> ${rect.map(v => Number(v).toFixed(1)).join(", ")}`
       + `${p.axes.length ? " · " + p.axes.map(a => a.name).join(", ") : ""}</span>`;
     li.addEventListener("mouseenter", () => { hover = p.name; draw(); });
     li.addEventListener("mouseleave", () => { hover = null; draw(); });
     return li;
   }));
+  for (const input of el("panels").querySelectorAll("input[data-lock]"))
+    input.addEventListener("change", () => {
+      locks[input.dataset.lock] = input.checked;
+      if (input.checked && picked === input.dataset.lock) picked = null;
+      renderEdit();
+      draw();
+    });
   const issues = state.issues && state.issues.length
     ? state.issues : [{level: "info", text: "no issues"}];
   el("issues").replaceChildren(...issues.map(i => {
@@ -562,12 +618,27 @@ function render() {
   draw();
 }
 
+// One entry per panel the page changed: its box, its lock, its letter, its new name.
+function edited() {
+  const changes = {};
+  for (const p of panelsNow()) {
+    const entry = {};
+    if (draft[p.name] || extra[p.name]) entry.box = boxOf(p);
+    if (locks[p.name] !== undefined) entry.locked = locks[p.name];
+    if (letters[p.name] !== undefined) entry.label = letters[p.name];
+    if (renames[p.name] && renames[p.name] !== p.name) entry.rename = renames[p.name];
+    if (Object.keys(entry).length) changes[p.name] = entry;
+  }
+  return changes;
+}
+
 async function arrange() {
   el("report").textContent = "arranging...";
   try {
     const answer = await (await fetch("optimize", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({layout: active, panels: draft}),
+      body: JSON.stringify({layout: active, panels: draft,
+                            locked: panelsNow().filter(lockedOf).map(p => p.name)}),
     })).json();
     if (answer.error) {
       el("report").className = "mm dirty";
@@ -594,7 +665,8 @@ async function save() {
   try {
     const answer = await fetch("save", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({layout: active, variant: name, panels: draft, page_guides: rulers}),
+      body: JSON.stringify({layout: active, variant: name, panels: edited(),
+                            page_guides: rulers}),
     });
     const result = await answer.json();
     if (result.error) {
@@ -603,6 +675,7 @@ async function save() {
       return;
     }
     draft = {};
+    locks = {}; letters = {}; renames = {}; extra = {};
     movedGuides = false;
     picked = null;
     pickedGuide = null;
@@ -658,6 +731,16 @@ el("paper").addEventListener("pointermove", ev => {
 });
 el("paper").addEventListener("pointerup", ev => {
   if (drag) el("paper").releasePointerCapture(ev.pointerId);
+  // Dragged off the sheet, a guide is gone -- the gesture a drawing program uses to remove one.
+  if (drag && drag.mode === "guide") {
+    const at = atEvent(ev);
+    const out = at[0] < -originMM[0] || at[0] > viewMM[0] - originMM[0]
+             || at[1] < -originMM[1] || at[1] > viewMM[1] - originMM[1];
+    if (out) {
+      pickedGuide = {axis: drag.axis, index: drag.index};
+      dropGuide();
+    }
+  }
   drag = null;
 });
 document.addEventListener("keydown", ev => {
@@ -679,22 +762,40 @@ document.addEventListener("keydown", ev => {
   }
   if (!picked) return;
   ev.preventDefault();
-  const rect = boxOf(state.panels.find(p => p.name === picked));
+  const chosen = panelsNow().find(p => p.name === picked);
+  if (lockedOf(chosen)) return;
+  const rect = boxOf(chosen);
   edit(picked, [rect[0] + step[0] * by, rect[1] + step[1] * by, rect[2], rect[3]]);
 });
 for (const [i, key] of ["f-x", "f-y", "f-w", "f-h"].entries())
   el(key).addEventListener("change", () => {
     if (!picked) return;
-    const rect = boxOf(state.panels.find(p => p.name === picked)).slice();
+    const rect = boxOf(panelsNow().find(p => p.name === picked)).slice();
     rect[i] = parseFloat(el(key).value);
     if (!isNaN(rect[i])) edit(picked, rect);
   });
 el("save").onclick = save;
 el("arrange").onclick = arrange;
+el("add").onclick = addPanel;
+el("f-key").addEventListener("change", () => {
+  if (picked) renames[picked] = el("f-key").value.trim();
+  renderEdit();
+});
+el("f-letter").addEventListener("change", () => {
+  if (picked) letters[picked] = el("f-letter").value.trim();
+  renderEdit();
+  draw();
+});
+el("f-lock").addEventListener("change", () => {
+  if (picked) locks[picked] = el("f-lock").checked;
+  renderEdit();
+  render();
+});
 el("guide-x").onclick = () => addGuide("x");
 el("guide-y").onclick = () => addGuide("y");
 el("revert").onclick = () => {
   draft = {};
+  locks = {}; letters = {}; renames = {}; extra = {};
   picked = null;
   pickedGuide = null;
   movedGuides = false;
@@ -725,6 +826,78 @@ def _checked_rect(name: str, value: Any) -> Rect:
     if w < 1.0 or h < 1.0:
         raise ValueError(f"{name}: a panel smaller than 1 x 1 mm is a mistake, not a layout")
     return Rect(round(x, 2), round(y, 2), round(w, 2), round(h, 2))
+
+
+def _set_label(entry: dict[str, Any], text: str) -> None:
+    """The letter drawn on a panel; an empty one goes back to the default."""
+    if text.strip():
+        entry["label"] = {**(entry.get("label") or {}), "text": text.strip()}
+    else:
+        entry.pop("label", None)
+
+
+def _set_lock(data: dict[str, Any], name: str, locked: bool) -> None:
+    """A locked panel is a frozen one: the page will not drag it, the optimizer will not resize it."""
+    panels = data.setdefault("optimize", {}).setdefault("panels", {})
+    entry = panels.setdefault(name, {})
+    if locked:
+        entry["freeze"] = True
+        return
+    entry.pop("freeze", None)
+    if not entry:
+        panels.pop(name)
+    if not panels:
+        data["optimize"].pop("panels")
+        if not data["optimize"]:
+            data.pop("optimize")
+
+
+def _panel_edit(name: str, value: Any) -> dict[str, Any]:
+    """One panel's edits from the page: a bare box, or a mapping of what changed."""
+    if isinstance(value, dict):
+        box = value.get("box")
+        return {
+            "box": None if box is None else _checked_rect(name, box),
+            "locked": None if value.get("locked") is None else bool(value["locked"]),
+            "label": value.get("label"),
+            "rename": value.get("rename"),
+        }
+    return {"box": _checked_rect(name, value), "locked": None, "label": None, "rename": None}
+
+
+def _inside_sheet(guides: dict[str, list[float]], sheet: Any) -> dict[str, list[float]]:
+    """Page guides that still fall on the sheet; a guide dragged off it is gone, as intended.
+
+    The sheet is the largest thing drawn, so a line outside it cannot be seen, cannot be
+    grabbed again, and would silently come back with the layout. Without a sheet (a layout with
+    no ``page:`` and ``--paper none``) there is nothing to fall off, and every guide is kept.
+    """
+    if sheet is None:
+        return guides
+    bounds = {
+        "x": (-sheet.area.x, sheet.size[0] - sheet.area.x),
+        "y": (-sheet.area.y, sheet.size[1] - sheet.area.y),
+    }
+    return {
+        axis: [v for v in values if bounds[axis][0] <= v <= bounds[axis][1]]
+        for axis, values in guides.items()
+    }
+
+
+def _margin_guides(sheet: Any) -> dict[str, list[float]]:
+    """The four margins of the sheet, in layout millimetres: where page guides start from.
+
+    A figure is arranged against the text block before anything else, so those are the lines
+    the page offers when a layout carries none of its own.
+    """
+    if sheet is None:
+        return {"x": [], "y": []}
+    return {
+        "x": sorted({round(sheet.text.left - sheet.area.x, 2),
+                     round(sheet.text.right - sheet.area.x, 2)}),
+        "y": sorted({round(sheet.text.top - sheet.area.y, 2),
+                     round(sheet.text.bottom - sheet.area.y, 2)}),
+    }  # fmt: skip
 
 
 def _checked_guides(guides: dict[str, Any]) -> dict[str, list[float]]:
@@ -829,6 +1002,7 @@ class Viewer:
         issues.extend(check_rules(features, rules, tolerance))
         lines = rule_lines(features, rules)
         sheet = layout.sheet_geometry(self.paper)
+        target = Target.from_layout(layout)
         return {
             **common,
             "name": layout.name,
@@ -846,12 +1020,16 @@ class Viewer:
                 "assumed": sheet.assumed,
             },
             "guides": layout.guides,
-            "page_guides": layout.page_guides,
-            "gap": Target.from_layout(layout).gap,
+            "page_guides": layout.page_guides
+            if (layout.page_guides["x"] or layout.page_guides["y"])
+            else _margin_guides(sheet),
+            "page_guides_from_margins": not (layout.page_guides["x"] or layout.page_guides["y"]),
+            "gap": target.gap,
             "panels": [
                 {
                     "name": name,
                     "label": spec.label,
+                    "locked": name in target.freeze,
                     "box": spec.box.to_list(),
                     "axes": [
                         {"name": axes.name, "box": rect.to_list()}
@@ -875,10 +1053,10 @@ class Viewer:
         self,
         key: str | None,
         variant: str,
-        boxes: dict[str, Any],
+        panels: dict[str, Any],
         guides: dict[str, Any] | None = None,
     ) -> Path:
-        """Write the boxes edited on the page as ``layout.<variant>.yaml``.
+        """Write what the page holds as ``layout.<variant>.yaml``.
 
         The result is a resolved layout written by :func:`plotplate.pack.place_boxes`, so the
         axes keep the millimetres that hold their tick labels and the guides are re-derived
@@ -887,16 +1065,19 @@ class Viewer:
         Args:
             key: the variant that was edited, which the saved one is based on.
             variant: the name to save under, which becomes ``layout.<variant>.yaml``.
-            boxes: the panels that moved, each as ``[x, y, w, h]`` in layout millimetres.
+            panels: one entry per edited panel, either ``[x, y, w, h]`` or a mapping with
+                ``box``, ``locked``, ``label`` and ``rename``. A name the layout does not
+                have is a new panel, and then ``box`` is required.
             guides: the page guides to store, as ``{"x": [...], "y": [...]}`` in the same
-                millimetres; ``None`` keeps the ones the layout already has.
+                millimetres; ``None`` keeps the ones the layout already has. Guides that fall
+                outside the sheet are dropped.
 
         Returns:
             The file that was written.
 
         Raises:
             PermissionError: the viewer was not started with ``--edit``.
-            ValueError: the name, or one of the boxes, cannot be used.
+            ValueError: the name, a box, a new panel or a rename cannot be used.
         """
         from .config import dump_yaml
         from .pack import place_boxes
@@ -911,23 +1092,86 @@ class Viewer:
                 "would be replaced by numbers. Save under another name, and copy it over yourself"
             )
         layout = self.layout(key)
+        edits = {name: _panel_edit(name, value) for name, value in panels.items()}
         old = {name: spec.box for name, spec in layout.panels.items()}
-        new = dict(old)
-        for name, value in boxes.items():
-            if name not in old:
-                raise ValueError(f"{name!r} is not a panel of this layout")
-            new[name] = _checked_rect(name, value)
+        fresh = {name: edit for name, edit in edits.items() if name not in old}
+        for name, edit in fresh.items():
+            if not PANEL_NAME.fullmatch(name):
+                raise ValueError(f"{name!r} is not a panel name (letters, digits, - and _)")
+            if edit["box"] is None:
+                raise ValueError(f"{name!r} is not a panel of this layout, and has no box")
+        moved = {
+            name: edit["box"]
+            for name, edit in edits.items()
+            if name in old and edit["box"] is not None
+        }
         data = layout.resolved()
-        place_boxes(data, layout, old, new)
+        place_boxes(data, layout, old, {**old, **moved})
+        for name, edit in fresh.items():  # a panel drawn on the page for the first time
+            data["panels"][name] = {"box": edit["box"].to_list()}
+        self._apply_panel_edits(data, layout, edits)
         if guides is not None:
-            data["page_guides"] = _checked_guides(guides)
-            if not (data["page_guides"]["x"] or data["page_guides"]["y"]):
+            kept = _inside_sheet(_checked_guides(guides), layout.sheet_geometry(self.paper))
+            data["page_guides"] = kept
+            if not (kept["x"] or kept["y"]):
                 data.pop("page_guides")
         path = variant_path(self.path(key), variant)
         dump_yaml(data, path)
         return path
 
-    def arrange(self, key: str | None, boxes: dict[str, Any]) -> dict[str, Any]:
+    def _apply_panel_edits(
+        self, data: dict[str, Any], layout: Layout, edits: dict[str, dict[str, Any]]
+    ) -> None:
+        """Locks, panel letters and renames, applied to a resolved layout in place.
+
+        Raises:
+            ValueError: a rename would orphan a drawn panel file, or collide with a panel.
+        """
+        for name, edit in edits.items():
+            if edit["label"] is not None:
+                _set_label(data["panels"][name], str(edit["label"]))
+            if edit["locked"] is not None:
+                _set_lock(data, name, bool(edit["locked"]))
+        for name, edit in edits.items():
+            if edit["rename"]:
+                self._rename_panel(data, layout, name, str(edit["rename"]).strip())
+
+    def _rename_panel(self, data: dict[str, Any], layout: Layout, name: str, fresh: str) -> None:
+        """Give a panel another name, unless something has already been drawn under the old one.
+
+        A panel's name is the name of its file (``panels/A.pdf``) and of whatever draws it, so
+        renaming one that exists only on paper is free, and renaming one that has been drawn is
+        a change to the figure's code that this page cannot make.
+
+        Raises:
+            ValueError: the name is not usable, is taken, or the panel is already drawn.
+        """
+        if not PANEL_NAME.fullmatch(fresh):
+            raise ValueError(f"{fresh!r} is not a panel name (letters, digits, - and _)")
+        if fresh in data["panels"]:
+            raise ValueError(f"this figure already has a panel called {fresh!r}")
+        drawn = sorted(p.name for p in layout.panels_dir.glob(f"{name}.*"))
+        if drawn:
+            raise ValueError(
+                f"{name} is already drawn ({', '.join(drawn)}): renaming it here would leave "
+                f"those files behind. To change only the letter, set it in this panel's `letter` "
+                f"field; to change the name, use `plotplate merge <layout> {name} --as {fresh}` "
+                f"and rename the panel code with it"
+            )
+        # Rebuilt rather than popped and re-added: panels are written in reading order, which is
+        # what `labels: auto` hands out letters by, so a renamed panel keeps its place.
+        data["panels"] = {
+            (fresh if key == name else key): entry for key, entry in data["panels"].items()
+        }
+        frozen = (data.get("optimize") or {}).get("panels") or {}
+        if name in frozen:
+            data["optimize"]["panels"] = {
+                (fresh if key == name else key): entry for key, entry in frozen.items()
+            }
+
+    def arrange(
+        self, key: str | None, boxes: dict[str, Any], locked: list[str] | None = None
+    ) -> dict[str, Any]:
         """What ``plotplate optimize`` makes of the boxes currently on the page.
 
         Nothing is written: the new boxes go back to the page as another edit, which can be
@@ -951,8 +1195,16 @@ class Viewer:
         new = bring_inside(new, layout.width, layout.height)
         data = layout.resolved()
         place_boxes(data, layout, old, new)
-        drafted = Layout(data)
-        target = replace(Target.from_layout(drafted), width=drafted.width, height=drafted.height)
+        # The same file path as the layout it came from: style files, journal presets and panel
+        # files are all resolved relative to it, and a draft that forgot where it lives cannot
+        # even be read (`../style.yaml` would be looked for next to the working directory).
+        drafted = Layout(data, self.path(key))
+        target = replace(
+            Target.from_layout(drafted),
+            width=drafted.width,
+            height=drafted.height,
+            freeze=tuple(sorted(set(Target.from_layout(drafted).freeze) | set(locked or ()))),
+        )
         arranged, report = optimize(drafted, target)
         return {
             "panels": {name: entry["box"] for name, entry in (arranged.get("panels") or {}).items()},
