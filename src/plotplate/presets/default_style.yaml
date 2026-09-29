@@ -23,11 +23,15 @@ ticks:
   pad: 1.5  # pt
 
 # Panel letters are drawn by LaTeX (and by the preview), never inside panel files.
+# They are stamped at an absolute position over the panel's own margin, so they take no room:
+# the figure is exactly as big as the layout says, whoever draws them.
 panel_label:
   size: 8  # pt
   weight: bold  # bold | normal
   case: upper  # upper | lower
   offset: [0.0, 0.0]  # mm, label top-left relative to the panel box top-left
+  format: "{letter}"  # "({letter})" for (a) (b), "{letter})" for a) b)
+  latex_font: "\\sffamily"  # font commands the LaTeX macro applies; e.g. \\fontspec{Arial}
 
 export:
   formats: [pdf, svg, png]

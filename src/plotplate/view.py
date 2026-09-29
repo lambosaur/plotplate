@@ -114,8 +114,10 @@ PAGE = """<!doctype html>
       <label>h <input type="number" id="f-h" step="0.5"></label>
     </div>
     <div class="row">
-      <label>name <input id="f-key" size="5"></label>
-      <label>letter <input id="f-letter" size="3"></label>
+      <label title="the panel's identity: its file (panels/&lt;id&gt;.pdf) and the code that draws
+        it. Fixed once it has been drawn">id <input id="f-key" size="5"></label>
+      <label title="what the reader sees; yours to change at any time">
+        letter <input id="f-letter" size="3"></label>
       <label title="locked panels cannot be dragged, and arrange keeps their size">
         <input type="checkbox" id="f-lock"> locked</label>
     </div>
@@ -584,6 +586,13 @@ function renderEdit() {
     el(key).value = rect ? rect[i] : "";
   }
   for (const key of ["f-key", "f-letter", "f-lock"]) el(key).disabled = !panel;
+  // The id of a panel that has been drawn is the name of its file and of the code behind it,
+  // so it is not something this page can change; the letter always is.
+  el("f-key").disabled = !panel || !!(panel && panel.drawn);
+  el("f-key").title = panel && panel.drawn
+    ? `${panel.name} is already drawn: its id belongs to panels/${panel.name}.pdf and to the code `
+      + "that draws it. The letter is yours to change"
+    : "the panel's identity: its file and the code that draws it";
   el("f-key").value = panel ? (renames[panel.name] || panel.name) : "";
   el("f-letter").value = panel ? letterOf(panel) : "";
   el("f-lock").checked = panel ? lockedOf(panel) : false;

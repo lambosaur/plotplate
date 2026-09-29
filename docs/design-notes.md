@@ -127,8 +127,12 @@ decision.
   of a layout the server did not read (it always saves a full variant).
 - `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the
   user) decides how drawing code moves.
-- Panel letters in the LaTeX output use the document font; set `\plotplatePanelLabel` to Arial (for
-  example with `fontspec` under XeLaTeX) to match `plotplate export`.
+- Panel letters in the LaTeX output use the font commands of `panel_label.latex_font` (`\sffamily` by
+  default, so the document's sans); set it to `\fontspec{Arial}` under XeLaTeX, or redefine
+  `\plotplatePanelLabel`, to match `plotplate export` exactly.
+- The letter is stamped with `\put`, not set with `subcaption`/`subfigure`: it takes no space, so the
+  assembled figure is exactly the size the layout says.
+  `subfigure` would add a line under each panel and shrink the panels to compensate.
 
 ## Integration with project-meta
 

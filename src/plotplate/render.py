@@ -20,6 +20,7 @@ from matplotlib.patches import Rectangle
 
 from .geometry import Rect, mm_to_pt, pt_to_mm
 from .layout import PAPERS as PAPER_MM, Issue, Layout
+from .style import label_text
 
 SIZE_TOL_MM = 0.1
 
@@ -238,7 +239,10 @@ def compose(
             top = mm_to_pt(spec.box.y + spec.label_offset[1])
             writer = pymupdf.TextWriter(page.rect)
             writer.append(
-                pymupdf.Point(x, top + font.ascender * size), spec.label, font=font, fontsize=size
+                pymupdf.Point(x, top + font.ascender * size),
+                label_text(layout.style, spec.label),
+                font=font,
+                fontsize=size,
             )
             writer.write_text(page)
 
@@ -428,7 +432,7 @@ def _preview_svg(layout: Layout, path: Path, labels: bool) -> Path:
                     f"font-size:{size_mm:.3f}px;font-weight:{label_style['weight']}",
                 },
             )
-            text.text = spec.label
+            text.text = label_text(layout.style, spec.label)
     tree = ET.ElementTree(root)
     ET.indent(tree)
     tree.write(path, encoding="utf-8", xml_declaration=True)

@@ -11,6 +11,21 @@ from matplotlib import font_manager
 from .config import PRESETS
 
 
+def label_text(style: dict[str, Any], letter: str) -> str:
+    """What a panel letter looks like once drawn: ``a``, ``(a)``, ``a)``...
+
+    The letter itself stays what the layout says, so renaming and formatting never get mixed
+    up: ``panel_label.format`` is applied at drawing time, by LaTeX, the preview and the
+    viewer alike. A format that cannot be applied is ignored rather than raised: a figure with
+    a misspelt template still has its letters.
+    """
+    template = str((style.get("panel_label") or {}).get("format") or "{letter}")
+    try:
+        return template.format(letter=letter)
+    except (KeyError, IndexError, ValueError):
+        return letter
+
+
 def rc_params(style: dict[str, Any]) -> dict[str, Any]:
     """Matplotlib rcParams for panels drawn at final print size."""
     font = style["font"]

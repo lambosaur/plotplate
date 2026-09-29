@@ -107,12 +107,67 @@ Three levels, each with its own name:
 | panel | the panel key (`A`, or `roc_prc` with `labels: auto`) | you, or a letter read from a PDF | the letter, drawn by LaTeX or `plotplate export` |
 | plotting area | the axes name (`roc`, `heatmap`, `ax1`) | you, or `plotplate from-pdf --axes` | usually none; add sub-labels in the panel code if needed |
 
+### The panel key is an id; the letter is what the reader sees
+
+They are two different things, and only one of them is yours to change freely:
+
+| | the key | the letter |
+| --- | --- | --- |
+| written | the mapping key under `panels:` | `label: {text: b}`, or the key itself with `labels: id` |
+| used by | `panels/<key>.pdf`, the code that draws the panel, `alignment.yaml`, `plotplate features` | nothing: it is only drawn |
+| change it | while the panel has no file yet; after that with `plotplate merge <layout> <key> --as <new>`, renaming the panel code with it | whenever you like, in the layout or in `plotplate view --edit` |
+
+So a figure whose panels must carry letters in an unconventional order does not renumber its keys:
+
+```yaml
+labels: auto              # keys are ids, letters are handed out in reading order...
+panels:
+  survival:  {box: [...], label: {text: c}}   # ... except where you say otherwise
+  cohort:    {box: [...], label: {text: a}}
+  qc:        {box: [...], label: {text: b}}
+```
+
+`labels: auto` is worth setting as soon as the keys mean something (`survival`, `qc`, or the `S01`,
+`S02` that detection produces): the letters then follow the boxes, and an explicit `label.text` wins
+over the automatic one wherever the reading order is not what you want.
+With the default `labels: id` the key *is* the letter, which is convenient for a figure whose panels
+are simply A, B, C, and is why `plotplate view --edit` refuses to change the key of a panel that has
+already been drawn: that key is the name of its file.
+
 A panel is one matplotlib figure, whatever it contains: one axes, a grid of axes, or a library figure
 such as a seaborn clustermap (which is itself several axes).
 Its axes entries name the areas you want to place or align; areas you do not name are left to
 matplotlib.
 Sub-labels inside a panel (A1, A2 or a, b) are text drawn by the panel code, not layout entries; only
 panel letters are drawn by LaTeX.
+
+## Panel letters
+
+Panel letters are **never drawn inside a panel file**.
+They are stamped on the assembled figure — by the generated LaTeX, and identically by
+`plotplate preview` / `export` — at the millimetre the layout gives:
+
+```latex
+\put(0.00,150.00){\makebox(0,0)[lt]{\plotplatePanelLabel{a}}}%   % panel A's corner
+```
+
+Two consequences worth knowing:
+
+- **They take no space.** `subcaption` / `subfigure`, the usual LaTeX way, puts `(a)` on a line of its
+  own under each panel and makes the figure taller, so the panels have to shrink to compensate.
+  Here the letter sits over the panel's own margin — the strip that holds the tick labels — and the
+  assembled figure is exactly the size `area:` says.
+- **One definition, two renderers.**
+  `panel_label` in the style sets size, weight, case, offset, `format` (`"({letter})"` for `(a)`) and `latex_font`
+  (the LaTeX font commands, `\sffamily` by default).
+  The preview and the export read the same settings, so what you see is what compiles.
+
+What journals actually require is case, weight and font — not a clearance in millimetres.
+The bundled presets record it per journal (`plotplate journals`): Nature lower-case bold 8 pt, Science
+and PLOS upper-case bold, Cell upper-case bold, Genome Research upper-case bold 12 pt; each with its
+source in `presets/journals/`.
+The offset defaults to the panel box's top-left corner; move it with `label: {offset: [x, y]}` (mm)
+when a panel's content reaches into that corner, as an image panel does.
 
 ## Page guides
 
@@ -228,6 +283,7 @@ The style merges four layers, later wins:
 | `lines.min` | thinner visible lines are a warning |
 | `ticks.length`, `ticks.width`, `ticks.pad` | tick geometry (pt) |
 | `panel_label.size`, `.weight`, `.case`, `.offset` | panel letters, drawn by LaTeX |
+| `panel_label.format`, `.latex_font` | `"({letter})"` for (a) (b); the LaTeX font commands (`\sffamily`, `\fontspec{Arial}`) |
 | `export.formats`, `export.dpi` | files written by `Panel.save` |
 | `export.transparent` | save panels without a background, so overlapping panel boxes do not paint over each other |
 | `colors` | named colors shared by all panels (`panel.colors`) |

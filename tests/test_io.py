@@ -289,3 +289,33 @@ def test_svg_import_keeps_axes_names_that_repeat_across_panels(tmp_path):
 
     assert set(updated["panels"]) == {"A", "A-zoom"}  # "A-zoom/main" did not become "A/zoom-main"
     assert [i.code for i in issues] == []
+
+
+def test_panel_letters_take_no_space_and_follow_the_style(layout, tmp_path):
+    """The letter is stamped at a millimetre inside `picture`: the figure keeps its size."""
+    from plotplate.latex import figure_tex
+
+    tex = figure_tex(layout)
+    assert "subfigure" not in tex and "subcaption" not in tex  # those would add a line per panel
+    assert f"\\begin{{picture}}({layout.width:.2f},{layout.height:.2f})" in tex
+    assert "\\fontsize{8pt}{8pt}\\selectfont\\sffamily\\bfseries" in tex  # from the style
+    assert "\\makebox(0,0)[lt]{\\plotplatePanelLabel{a}}" in tex  # nature: lower case
+
+    styled = pp.Layout(
+        {
+            **layout.raw,
+            "style": {"panel_label": {"format": "({letter})", "latex_font": "\\fontspec{Arial}"}},
+        },
+        layout.path,
+    )
+    assert "\\plotplatePanelLabel{(a)}" in figure_tex(styled)
+    assert "\\selectfont\\fontspec{Arial}\\bfseries" in figure_tex(styled)
+
+
+def test_the_label_format_reaches_the_preview_too(layout, tmp_path):
+    """What LaTeX draws and what the preview draws are the same string."""
+    from plotplate.render import _preview_svg
+
+    styled = pp.Layout({**layout.raw, "style": {"panel_label": {"format": "{letter})"}}}, layout.path)
+    svg = _preview_svg(styled, tmp_path / "preview.svg", labels=True).read_text()
+    assert ">a)<" in svg
