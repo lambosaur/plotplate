@@ -221,7 +221,8 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
   distortion limit that decides how far it may go.
 - [docs/journal-specs.md](docs/journal-specs.md): figure requirements of Nature, Science, Cell, NAR,
   Genome Biology, Genome Research and PLOS, with sources.
-- [docs/related-tools.md](docs/related-tools.md): SciencePlots and Marsilea.
+- [docs/related-tools.md](docs/related-tools.md): every tool considered — styling, composition, figure
+  segmentation, plot digitisation — what is used here and why the rest is not.
 - [docs/design-notes.md](docs/design-notes.md): decisions, limitations, open questions.
 
 ## Commands

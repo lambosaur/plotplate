@@ -5,17 +5,90 @@
 
 ## Scope
 
-This file compares existing tools with this package, and says how to combine them.
-SciencePlots and Marsilea were evaluated hands-on on 2026-09-14 (source code read, Marsilea run on the
-demo data).
+Every tool that was considered for this package, whether it was adopted or not, and why.
+Some were read and run; others were only read about — the **looked at** column says which, so that a
+verdict can be re-opened with the right amount of scepticism.
 
-## Summary
+| looked at | means |
+| --- | --- |
+| run | installed and used on real data here |
+| source | source code or paper read |
+| page | project page, README or article read |
 
-| tool | what it solves | overlap | verdict |
+## Used here
+
+| tool | what it solves | how it is used | looked at |
 | --- | --- | --- | --- |
-| [SciencePlots](https://github.com/garrettj403/SciencePlots) | matplotlib style sheets for papers | style only (fonts, ticks, colours) | do not depend on it; its colour cycles are bundled here as palettes |
-| [Marsilea](https://marsilea.readthedocs.io/en/stable/) | composable annotated heatmaps and similar multi-axes plots | none; it draws panel content | good fit for complex heatmap panels, through `fit_marsilea` |
-| seaborn figure-level plots | clustermap, jointplot, pairplot | none; panel content | supported through `panel.fit` and `place_clustermap` |
+| [matplotlib](https://matplotlib.org) | drawing | every panel is one `Figure`, saved at its exact size | run |
+| [kiwisolver](https://github.com/nucleic/kiwi) | Cassowary constraint solving (already a matplotlib dependency) | `constraints:` and the `optimize` grid solve | run |
+| [PyMuPDF](https://pymupdf.readthedocs.io) | PDF reading and composition | `from-pdf` placements, previews, page rendering | run |
+| [Marsilea](https://marsilea.readthedocs.io/en/stable/) | composable annotated heatmaps | optional, for panel *content*, through `fit_marsilea` | run |
+| seaborn figure-level plots | clustermap, jointplot, pairplot | optional, through `panel.fit` / `place_clustermap` | run |
+| LaTeX `graphicx` + `picture` | final assembly | panels placed at millimetre positions, scale 1.0 | run |
+| Inkscape / Illustrator | drawing and correcting boxes | optional round trip, `svg-export` / `svg-import` | run |
+
+## Styling matplotlib for journals
+
+All of these solve *style* (fonts, ticks, colours, sizes), which is one `style:` section here.
+None of them size a panel to a millimetre box or assemble a figure, so none is a dependency; what they
+encode is worth reading, and in one case worth copying.
+
+| tool | what it is | verdict | looked at |
+| --- | --- | --- | --- |
+| [SciencePlots](https://github.com/garrettj403/SciencePlots) | the best-known set of `.mplstyle` sheets for papers | not a dependency; its colour cycles are bundled as palettes (see below). Its ~400 forks are mostly extra sheets and were not audited | source |
+| [sciplotlib](https://github.com/Timothysit/sciplotlib) | style sheets (Nature Reviews, Economist…), helpers such as `set_bounds`, **and** a YAML/GUI multi-panel composer | the closest overlap of this list, on composition as well as style; its composer positions panels on a grid rather than sizing each panel to a box in millimetres, which is the thing this package exists to do. Not evaluated hands-on | page |
+| [peerstyle](https://libraries.io/pypi/peerstyle) | journal style presets (IEEE, Nature), 300 dpi export, curved line labels | v0.1.3, one contributor, no adoption yet: too young to depend on. The curved-label idea is a panel-content trick, orthogonal to layout | page |
+| [nature-plot-style](https://github.com/hoanglongcao/nature-plot-style) | a `set_nature_style()` function plus Nature-ish palettes | a single function, not a package to depend on; the same ground is covered by `presets/journals/nature.yaml`, which cites the official guide line by line | page |
+| [proplot / ultraplot](https://proplot.readthedocs.io) | a matplotlib wrapper with its own layout engine | replaces matplotlib's API for panel content, and its layout works in inches inside one figure; conflicts with one-panel-one-file | page |
+
+## Composing multi-panel figures
+
+The alternatives to "one file per panel, assembled by LaTeX at scale 1.0".
+
+| tool | what it is | verdict | looked at |
+| --- | --- | --- | --- |
+| matplotlib `subfigures` / one big `Figure` | the built-in way | seaborn's figure-level functions and Marsilea cannot draw into a `SubFigure`, and one script per figure grows unmanageable | run |
+| [figurefirst](https://github.com/FlyRanch/figurefirst) | layouts drawn in Inkscape, axes created from SVG rectangles | the closest existing idea, and an influence; targets a single figure for the whole page, and is not actively maintained | source |
+| [svgutils](https://github.com/btel/svg_utils) | compose SVG panels in Python | fine for an SVG-only pipeline; LaTeX assembly was chosen so the manuscript's own engine places the panels | page |
+| [patchworklib](https://github.com/ponnhide/patchworklib) | `ggplot`-style composition of matplotlib axes with operators | composes by relative arrangement, not by a millimetre layout the journal fixed | page |
+| [pylustrator](https://github.com/rgerum/pylustrator) | drag panels in a matplotlib window, writes the code back | same goal as `plotplate view --edit`, inside one figure; the edits land in the plotting script rather than in a layout file | page |
+| PGF backend (text typeset by LaTeX) | exact font match with the manuscript | slower and more fragile; system fonts (Arial) were chosen instead | page |
+| `subcaption` / `subfigure` for panel letters | the usual LaTeX way | adds a line under each panel, so the figure grows and the panels shrink; letters are stamped with `\put` instead | run |
+
+## Reading a layout back from an existing figure
+
+This package reads **placed graphics** from a PDF (exact, no vision) and falls back to a deterministic
+XY-cut on rasters.
+The machine-learning alternatives all solve a neighbouring problem — splitting
+*published raster figures* for literature mining — and were not adopted; a `--detector` hook can take
+boxes from any of them if a raster-only figure with touching panels ever matters.
+
+| tool | what it is | verdict | looked at |
+| --- | --- | --- | --- |
+| [SODA](https://github.com/source-data/soda_image_segmentation) (SourceData / EMBO) | object detection + a multimodal LLM to split compound figures and match captions | ships no weights, 4 commits, no adoption; the open issue is someone asking for weights, unanswered | source |
+| [CompFigSep](https://github.com/GaetanLepage/compound-figure-separator) | Detectron-based panel segmentation, label recognition and caption splitting | a 2020 master's project (ExaMode), weights in the repository, unmaintained since | page |
+| SimCFS ([2107.08650](https://arxiv.org/abs/2107.08650), [2208.14357](https://arxiv.org/abs/2208.14357)) | compound-figure separation trained on simulated figures to avoid bounding-box labels | the method of record for this task; would mean bundling torch to recover boxes that the source PDF already states exactly | source |
+| EXSCLAIM! ([2103.10631](https://arxiv.org/abs/2103.10631)) | materials-science pipeline: extract, separate, caption-annotate | a literature-mining pipeline, not a layout tool; reports no separation accuracy | source |
+
+## Getting the *data* back out of a plot
+
+Different problem, deliberately out of scope: this package recovers **geometry** (where the panels and
+axes are), never the numbers inside them.
+If the numbers are what you need:
+
+| tool | what it is |
+| --- | --- |
+| [WebPlotDigitizer](https://automeris.io) | calibrate the axes of a plot image, extract the series; the standard tool, used in the [nicologiso walkthrough](https://www.nicologiso.com/tech/extracting-data-from-pdf-tables-and-plots/) |
+| [a matplotlib + numpy digitiser](https://www.pantelisliolios.com/digitize-scientific-plots-python/) | ~100 lines: click two reference lengths, then click along the curve |
+| [Camelot](https://camelot-py.readthedocs.io) / Excalibur | tables out of PDFs (lattice and stream), into pandas |
+
+## Guidance and specifications
+
+| source | what it gives | how it is used |
+| --- | --- | --- |
+| [Nature's figure specifications](https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/) | the official widths, fonts, formats | quoted line by line in `presets/journals/nature.yaml`; see [journal-specs.md](journal-specs.md) |
+| [Plotivy's 2025 Nature guide](https://plotivy.app/blog/nature-journal-figure-guidelines-2025) | a readable digest (89 / 120–136 / 183 mm, 5–7 pt text, 8 pt bold `a b c`, 300–600 dpi) | a useful cross-check of the preset, which it agrees with; a commercial product's blog, so the official page stays the source |
+| [the `nature-figure` agent skill](https://skills.rest/skill/nature-figure) | instructions for an agent to plan and draw a figure with matplotlib or ggplot2 | the same shape as the skills shipped here (`plotplate skills`), but it writes plotting code; this package's skills drive deterministic tools instead |
 
 ## SciencePlots
 
@@ -106,7 +179,9 @@ Findings from the evaluation:
 - Marsilea sets its own font sizes for labels unless given `fontsize`; pass
   `layout.style["font"]["small"]` to stay consistent with the other panels.
 
-## Other tools (not re-evaluated here)
+## Where the decisions live
 
-See [design-notes.md](design-notes.md#alternatives-considered) for figurefirst, matplotlib subfigures,
-the PGF backend, and svgutils/patchworklib, and why each was not adopted as the core mechanism.
+The tables above say what was considered.
+[design-notes.md](design-notes.md) says what was decided and why, including the ones that are about
+method rather than about a package: a grid solve instead of bin packing or integer programming,
+deterministic detection instead of model vision, and LaTeX assembly instead of Python composition.

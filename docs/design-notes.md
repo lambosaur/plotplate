@@ -51,6 +51,9 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 
 ## Alternatives considered
 
+[related-tools.md](related-tools.md) lists every tool that was looked at, with how closely.
+The entries here are the ones that are a decision about method rather than about a package.
+
 - **Bin packing / integer programming for the optimizer** (letting a panel move to another row, or
   swapping panels to fill a hole).
   It changes the meaning of the figure, needs a solver plotplate does not ship, and has no obvious
