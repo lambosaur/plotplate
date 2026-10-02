@@ -858,31 +858,83 @@ def cmd_fonts(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_skills(args: argparse.Namespace) -> int:
+def _skill_file(entry: Any, name: str) -> Path:
+    """A path to this skill's SKILL.md that something else can actually open.
+
+    The skills travel inside the package, so they are there after `pip install plotplate` and
+    after `pip install git+...` alike. An installation that keeps the package zipped has no
+    real path to give, and then the file is unpacked once into the user's cache, because a
+    path printed for an agent to read has to outlive this command.
+    """
+    import os
+
+    file = entry / "SKILL.md"
+    path = Path(str(file))
+    if path.is_file():
+        return path
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    target = cache / "plotplate" / "skills" / name
+    target.mkdir(parents=True, exist_ok=True)
+    with resources.as_file(file) as real:
+        shutil.copy2(real, target / "SKILL.md")
+    return target / "SKILL.md"
+
+
+def _skills() -> list[dict[str, Any]]:
+    """The bundled skills: name, one-line description, and where the file is."""
     source = resources.files("plotplate") / "skills"
-    skills = sorted((entry for entry in source.iterdir() if entry.is_dir()), key=lambda e: e.name)
+    found = []
+    for entry in sorted((e for e in source.iterdir() if e.is_dir()), key=lambda e: e.name):
+        text = (entry / "SKILL.md").read_text(encoding="utf-8")
+        description = next(
+            (line[len("description:") :].strip() for line in text.splitlines()
+             if line.startswith("description:")), ""
+        )  # fmt: skip
+        found.append(
+            {
+                "name": entry.name,
+                "description": description,
+                "path": str(_skill_file(entry, entry.name)),
+            }
+        )
+    return found
+
+
+def _list_skills(skills: list[dict[str, Any]]) -> None:
+    """What each skill is for, and the file to read it in."""
+    for skill in skills:
+        print(f"{skill['name']}\n  {skill['description']}\n  {skill['path']}")
+    if skills:
+        print(f"\nall of them are under {Path(skills[0]['path']).parent.parent}")
+    print("point an agent at those files, or run `plotplate skills` to copy them into a project")
+
+
+def cmd_skills(args: argparse.Namespace) -> int:
+    skills = _skills()
+    if args.paths:  # one path per line: `plotplate skills --paths | xargs cat`, or paste them
+        for skill in skills:
+            print(skill["path"])
+        return 0
+    if args.json:
+        print(json.dumps(skills, indent=2))
+        return 0
     if args.list:
-        for entry in skills:
-            text = (entry / "SKILL.md").read_text(encoding="utf-8")
-            description = next(
-                (line[len("description:") :].strip() for line in text.splitlines()
-                 if line.startswith("description:")), ""
-            )  # fmt: skip
-            print(f"{entry.name}\n  {description}")
+        _list_skills(skills)
         return 0
     if args.print:
-        for entry in skills:
-            print(f"<!-- {entry.name} -->")
-            print((entry / "SKILL.md").read_text(encoding="utf-8"))
+        for skill in skills:
+            print(f"<!-- {skill['name']} ({skill['path']}) -->")
+            print(Path(skill["path"]).read_text(encoding="utf-8"))
         return 0
+    source = resources.files("plotplate") / "skills"
     dest = Path(args.dest)
-    for entry in skills:
-        target = dest / entry.name
+    for skill in skills:
+        target = dest / skill["name"]
         if target.exists() and not args.force:
             print(f"skip {_rel(target)} (exists; --force to overwrite)")
             continue
         target.mkdir(parents=True, exist_ok=True)
-        for file in entry.iterdir():
+        for file in (source / skill["name"]).iterdir():
             with resources.as_file(file) as real:
                 shutil.copy2(real, target / file.name)
         print(f"installed {_rel(target)}")
@@ -1109,9 +1161,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("family", nargs="*")
     p.add_argument("--rebuild", action="store_true", help="rescan system fonts first")
 
-    p = add("skills", cmd_skills, "Install the bundled agent skills, or print them.")
+    p = add("skills", cmd_skills, "Install the bundled agent skills, or say where they are.")
     p.add_argument("--dest", default=".claude/skills", help="folder to copy the skills into")
-    p.add_argument("--list", action="store_true", help="list the skills and what they do")
+    p.add_argument("--list", action="store_true", help="list the skills, what they do, and where")
+    p.add_argument("--paths", action="store_true", help="just the paths, one per line")
+    p.add_argument("--json", action="store_true", help="name, description and path as JSON")
     p.add_argument("--print", action="store_true", help="print every skill (to paste into any agent)")
     p.add_argument("--force", action="store_true")
     return parser

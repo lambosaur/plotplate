@@ -25,17 +25,22 @@ plotplate = "plotplate.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Everything that is not Python but has to travel with the package: the journal presets, the
+# agent skills, and the demo. Recursive patterns, because naming folders here means the data
+# silently stops shipping when one is renamed (which is how the demo's layout.yaml went missing).
+# `tests/test_packaging.py` builds a wheel and checks that nothing under src/plotplate is left out.
 [tool.setuptools.package-data]
 plotplate = [
-  "presets/*.yaml",
-  "presets/journals/*.yaml",
-  "skills/*/*.md",
-  "demo/*/*.md",
-  "demo/*/*.py",
-  "demo/*/*.yaml",
-  "demo/figure/fig1/*",
-  "demo/figure/fig1/variants/*",
-  "demo/figure/legacy/*",
+  "presets/**/*.yaml",
+  "skills/**/*.md",
+  "demo/**/*.md",
+  "demo/**/*.py",
+  "demo/**/*.yaml",
+  "demo/**/*.csv",
+  "demo/**/*.parquet",
+  "demo/**/*.pdf",
+  "demo/**/*.png",
+  "demo/**/*.tex",
 ]
 
 [tool.pytest.ini_options]

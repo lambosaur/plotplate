@@ -85,9 +85,36 @@ For a pinned version in a Pixi project:
 plotplate = { git = "https://github.com/<org>/plotplate.git", rev = "<tag>" }
 ```
 
-Install the agent skills into the repository with `plotplate skills --dest .claude/skills`.
 After installing fonts on the machine, rebuild matplotlib's font cache once:
 `plotplate fonts --rebuild`.
+
+### Installing the skills
+
+plotplate is several things — a library, a command, a local viewer, journal presets and six agent
+skills — but it is **one Python package**: the presets and the skills are package data, and the
+viewer's JavaScript is a string inside `view.py`.
+Nothing is stripped by a wheel, so a PyPI install, a `git+https://…` install and an editable checkout
+all carry the same files.
+(`tests/test_packaging.py` builds a wheel and fails if anything under the package is left out, which
+is how the demo's `layout.yaml` was found missing.)
+
+Three ways to put them in front of an agent:
+
+```sh
+plotplate skills --dest .claude/skills   # copy them: Claude Code finds them by itself
+plotplate skills --paths                 # the files, one per line: hand them to any agent to read
+plotplate skills --print                 # the whole text: paste it, or append it to AGENTS.md
+```
+
+`--list` adds what each one is for, `--json` gives name, description and path for a script.
+Copying is the one to prefer where the framework has a skills folder, because the agent then loads
+them when they are relevant instead of carrying them in every conversation.
+Where it has none, `--paths` is enough: an agent that has read those six files knows the commands, the
+file formats and the order to run things in.
+
+The paths point inside the installed package.
+If plotplate is ever installed in a form that keeps the package zipped, `--paths` unpacks the skills
+into `~/.cache/plotplate/skills/` first, so the path it prints is always one that can be opened.
 
 ## 1. Create the layout
 

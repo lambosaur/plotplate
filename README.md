@@ -94,8 +94,14 @@ Pin the same tag in both installations to keep them equal.
 ```sh
 plotplate skills --dest .claude/skills     # Claude Code, this project
 plotplate skills --dest ~/.claude/skills   # Claude Code, every project
+plotplate skills --list                    # what each one is for, and where it is
+plotplate skills --paths                   # just the paths: hand them to an agent to read
+plotplate skills --json                    # the same, for a script
 plotplate skills --print                   # any other agent: paste, or append to AGENTS.md
 ```
+
+The skills travel inside the package, so they are there however plotplate was installed — from PyPI,
+from a git URL, or as an editable checkout — and `--paths` always prints files that can be opened.
 
 ### Fonts
 
