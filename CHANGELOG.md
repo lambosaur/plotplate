@@ -17,19 +17,11 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
 
 ### Added
 
-- `plotplate latex --panel-refs` / `plotplate bundle --panel-refs`, for a manuscript that references a
-  single panel: the `.tex` then also lists the letters it stamped and defines
-  `\plotplatePanelLabels{<prefix>}`, called after `\caption`, so that `\ref{fig:7a}` prints `7a` and
-  links to the figure.
-  The prefix is plain text, so `\plotplatePanelLabels{fig7:panel_}` serves an existing convention, and
-  a panel whose name is not its letter also gets `<prefix>-<name>`, which survives a renumbering.
-  Off by default — without it the file stays what it was: a picture box, one `\includegraphics` per
-  panel, one letter each, and no other definition.
-  An optional argument covers other naming conventions (`\plotplatePanelLabels[:panel-]{fig7}` gives
-  `fig7:panel-a`), and `cleveref` keeps the letter (`\cref` prints "fig. 7a").
-  Verified by compiling a document with two figures, `hyperref` and `cleveref`.
-- `<name>-figure.tex` also lists one commented-out `\label` per panel: uncomment to link to a panel,
-  and write the letter in the text (`Figure~\ref{fig:7}a`), which needs no macro at all.
+- `<name>-figure.tex` lists, commented out, one `\phantomsubcaption` line per panel: uncomment them
+  and `\ref{fig:7a}` prints `7a`, `\subref` prints `a`.
+  That is `subcaption` doing the one job `subfigure` was being used for — no plotplate macro, and no
+  space taken, verified by compiling with and without the lines and finding the caption in the same
+  place.
 - `<name>-figure.tex`: the figure environment, the placement, the caption and the label, written once
   with a placeholder caption and never overwritten, so what is edited by hand survives every rebuild.
   It includes `<name>.tex`, which holds the panels and stays generated.

@@ -624,7 +624,6 @@ def cmd_latex(args: argparse.Namespace) -> int:
         args.output,
         graphics_prefix=args.prefix,
         labels=not args.no_labels,
-        panel_refs=args.panel_refs,
     )
     print(f"wrote {_rel(out)}")
     if not args.no_scaffold:
@@ -638,7 +637,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
 
     layout = Layout.load(args.layout)
     status = cmd_check(args)
-    out = bundle(layout, args.output_dir, graphics_prefix=args.prefix, panel_refs=args.panel_refs)
+    out = bundle(layout, args.output_dir, graphics_prefix=args.prefix)
     prefix = args.prefix if args.prefix is not None else f"figures/{layout.name}/"
     print(f"wrote {_rel(out.parent)}: upload its content to {prefix} in the Overleaf project")
     print("then, one line in the manuscript:\n")
@@ -1125,11 +1124,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="do not create <name>-figure.tex (the figure environment and caption)",
     )
-    p.add_argument(
-        "--panel-refs",
-        action="store_true",
-        help="also define \\plotplatePanelLabels, to reference one panel (\\ref{fig:7a})",
-    )
 
     p = add("features", cmd_features, "List the measurable features of the saved panels.")
     p.add_argument("layout")
@@ -1167,11 +1161,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("layout")
     p.add_argument("output_dir")
     p.add_argument("--prefix", help="panel path inside Overleaf (default figures/<name>/)")
-    p.add_argument(
-        "--panel-refs",
-        action="store_true",
-        help="also define \\plotplatePanelLabels, to reference one panel (\\ref{fig:7a})",
-    )
 
     p = add("build", cmd_build, "Run panel scripts, then preview + LaTeX + check.")
     p.add_argument("layout")

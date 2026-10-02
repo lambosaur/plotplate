@@ -424,138 +424,32 @@ what the preview and the export use; change them there and rebuild.
   An empty `\caption{}` inside a `subfigure` prints its own `(a)` under the panel, and the figure
   would carry two sets of letters.
 
-### Linking to one panel
+### Referencing one panel
 
-Put a `\label` under the caption for each panel you want to link to.
-Nothing else is needed — the scaffold already lists them, commented out:
+`subfigure` did three things: it numbered the panels, it printed `(a)` under each one, and it laid
+them out. plotplate replaces the last two.
+The numbering is what you would otherwise lose, and `subcaption` gives it back on its own —
+`\phantomsubcaption` bumps the sub-counter and prints nothing:
 
 ```latex
+\usepackage{subcaption}        % in the preamble
+...
   \caption{...}
   \label{fig:figure_7}
-  \label{fig:figure_7a}   % panel A
-  \label{fig:figure_7b}   % panel B
+  \begin{subfigure}[t]{0pt}\phantomsubcaption\label{fig:figure_7a}\end{subfigure}%  panel A
+  \begin{subfigure}[t]{0pt}\phantomsubcaption\label{fig:figure_7b}\end{subfigure}%  panel B
 ```
 
-A `\label` records what `\caption` last set, which is the **figure's** number, so all of them print
-`7` and link to the figure.
-Write the letter yourself:
+`\ref{fig:figure_7a}` prints `7a` and links to the figure, `\subref` prints `a`.
+The lines occupy no space at all: compiled with and without them, the caption lands on the same point
+of the page.
+`<name>-figure.tex` already lists them, commented out, one per panel.
 
-```latex
-as shown in Figure~\ref{fig:figure_7}a
-```
+Without `subcaption` at all, a plain `\label` per panel works too, but records the **figure's**
+number, so `\ref` prints `7` and you write the letter: `Figure~\ref{fig:figure_7}a`.
 
-They must come *after* `\caption`: a `\label` placed before it records the section number instead,
-which is the bug behind many a figure reference that prints a chapter number.
-
-### Making `\ref` print the letter too (optional, off by default)
-
-Only for a manuscript that needs `\ref` to a single panel.
-`plotplate latex --panel-refs` (or `plotplate bundle --panel-refs`) appends a block of `\makeatletter`
-macros to the file, which is exactly why it is not there by default: the plain file above is the one
-to hand to a co-author.
-
-```latex
-  \caption{...}\label{fig:figure_1}
-  \plotplatePanelLabels{fig:figure_1}      % defines fig:figure_1a, fig:figure_1b, ...
-```
-
-The argument is a plain prefix, so an existing convention costs nothing:
-`\plotplatePanelLabels{fig7:panel_}` defines `fig7:panel_a`, `fig7:panel_b`, …
-
-A panel whose **name** is not its letter also gets a label of its own, `<prefix>-<name>`, pointing at
-the same place:
-
-```latex
-See Figure~\ref{fig:figure_1a}            % by letter: what readers see, and what you will remember
-See Figure~\ref{fig:figure_1-roc_auc}     % by name: survives a renumbering of the letters
-```
-
-Both print `7a`.
-The letter is positional, so it changes when panels are reordered and *renumber* is used; the name
-does not, which is why it is worth having in a draft that still moves.
-
-`\ref{fig:figure_1a}` then prints `7a` and links to the figure.
-The call must come **after `\caption`**, which is when the figure's number is final, and inside the
-same `figure` environment.
-
-```latex
-See Figure~\ref{fig:figure_1a} for the mutation scan.
-```
-
-- The letter is the one stamped on the panel, in the case of the journal preset (`7a` for Nature, `7A`
-  for Cell or Science).
-  A `panel_label.format` such as `({letter})` does not reach the reference: it prints `7a`, never
-  `7(a)`.
-- For another naming convention, the optional argument is inserted between the prefix and the letter:
-  `\plotplatePanelLabels[:panel-]{fig7}` defines `fig7:panel-a`.
-- With `cleveref`, `\cref{fig:figure_1a}` prints "fig. 7a" and `\Cref` "Figure 7a".
-- It needs two LaTeX passes, like any `\label`, and works with or without `hyperref`.
-
-Verified with XeTeX on a document holding two plotplate figures, `hyperref` and `cleveref`
-(`tests/test_io.py::test_panel_references_resolve_in_a_real_document`).
-
-To change the panel-letter font, define `\plotplatePanelLabel` in the preamble:
-
-```latex
-\newcommand{\plotplatePanelLabel}[1]{{\fontsize{8pt}{8pt}\selectfont\sffamily\bfseries #1}}
-```
-
-File names never change, so a new upload replaces the previous panels.
-
-### Several figures in one manuscript
-
-Run `plotplate bundle` once per figure, into one folder per figure, and keep a `figures.tex` of your
-own that includes them:
-
-```text
-overleaf-project/
-  main.tex              % \input{figures.tex} where the figures belong
-  figures.tex           % yours: one block per figure, see below
-  figures/
-    figure_1/  figure_1.tex  figure_1.pdf  A.pdf  B.pdf  C.pdf
-    figure_2/  figure_2.tex  figure_2.pdf  A.pdf  B.pdf
-```
-
-```latex
-% figures.tex
-\begin{figure}[t]
-  \centering
-  \input{figures/figure_1/figure_1.tex}
-  \caption{...}\label{fig:figure_1}
-\end{figure}
-
-\begin{figure}[t]
-  \centering
-  \input{figures/figure_2/figure_2.tex}
-  \caption{...}\label{fig:figure_2}
-\end{figure}
-```
-
-`figures.tex` and the captions are the manuscript's, not plotplate's: it never writes a `figure`
-environment, a caption or a label, because those belong to the text.
-`plotplate bundle` prints the block to paste, with the right paths already in it.
-
-### When a figure needs a last manual touch
-
-Every bundle also contains `<name>.pdf`: the same figure as **one file**, composed from the panels,
-letters included.
-It is there to look at and to send to a co-author — and for the case where a figure needs something no
-layout can express (an arrow across two panels, a hand-placed annotation).
-
-Open that PDF in Inkscape or Illustrator, finish it, save it next to the others, and change one line:
-
-```latex
-  % \input{figures/figure_1/figure_1.tex}        % the maintained version
-  \includegraphics{figures/figure_1/figure_1-final.pdf}   % the hand-finished one
-```
-
-No `width=` option: the file is already exactly `area.width × area.height`, so it prints at scale 1.0
-like the panels do, and nothing is scaled or cropped.
-Keep the commented `\input` line: it says where the figure came from, and swapping back is one
-character once the drawing is no longer needed.
-
-The hand-finished file is a manuscript artefact, so it belongs in the manuscript repository next to
-`figures.tex` — not in the figure folder, where the next `plotplate build` would be the authority.
+Either way the labels must come **after** `\caption`: one placed before it records the section number
+instead, which is the bug behind many a figure reference that prints a chapter number.
 
 ### If the journal asks for SVG
 

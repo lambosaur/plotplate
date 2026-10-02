@@ -10,7 +10,12 @@ import pytest
 import plotplate as pp
 from plotplate.config import load_yaml
 from plotplate.detect import draft_layout
-from plotplate.latex import figure_tex, standalone_document
+from plotplate.latex import (
+    figure_tex,
+    standalone_document,
+    write_figure_scaffold,
+    write_figure_tex,
+)
 from plotplate.render import preview, wireframe
 from plotplate.svg import export_svg, import_svg
 from plotplate.tidy import fill_gaps, merge_panels, tidy
@@ -353,64 +358,26 @@ def test_the_default_tex_defines_nothing_at_all(layout):
     assert not defined  # nothing at all is defined: the file is only pictures and text
 
 
-def test_panel_reference_macros_are_opt_in(layout):
-    """`--panel-refs` adds the block that lets the manuscript reference one panel."""
-    tex = figure_tex(layout, panel_refs=True)
-    assert "\\plotplate@label{#1a}{a}" in tex  # the stamped letters, in the preset's case
-    assert "\\gdef\\plotplatePanelLabels" in tex
-    assert "\\plotplatePanelLabels" not in figure_tex(layout, labels=False, panel_refs=True)
-
-    upper = pp.Layout({**layout.raw, "style": {"panel_label": {"case": "upper"}}}, layout.path)
-    assert "\\plotplate@label{#1A}{A}" in figure_tex(upper, panel_refs=True)
-    formatted = pp.Layout(
-        {**layout.raw, "style": {"panel_label": {"format": "({letter})"}}}, layout.path
-    )
-    # the reference is "7a", never "7(a)": the format is for the stamp, not for the label
-    assert "\\plotplate@label{#1a}{a}" in figure_tex(formatted, panel_refs=True)
-
-
-def test_a_panel_can_also_be_referenced_by_its_name(tmp_path):
-    """A name that is not a letter gets its own label, which survives a re-lettering."""
-    data = {
-        "schema": 1,
-        "name": "fig7",
-        "labels": "auto",
-        "area": {"width": 183, "height": 120},
-        "panels": {
-            "roc_auc": {"box": [0, 0, 89, 60]},
-            "rbp_heatmap": {"box": [94, 0, 89, 60]},
-        },
-    }
-    pp.config.dump_yaml(data, tmp_path / "layout.yaml")
-    tex = figure_tex(pp.Layout.load(tmp_path / "layout.yaml"), panel_refs=True)
-    assert "\\plotplate@label{#1A}{A}" in tex  # \\ref{fig:7A} (upper case by default)
-    assert "\\plotplate@label{#1-roc_auc}{A}" in tex  # ... or \\ref{fig:7-roc_auc}
-    assert "\\plotplate@label{#1-rbp_heatmap}{B}" in tex
-    assert "% panel roc_auc (A)" in tex  # the file says which panel carries which letter
-
-
 @pytest.mark.skipif(_tectonic() is None, reason="tectonic not installed")
-def test_panel_references_resolve_in_a_real_document(layout, tmp_path):
-    """Two figures in one document: \\ref prints <figure number><letter>, and cleveref agrees."""
+def test_the_panel_reference_recipe_compiles(layout, tmp_path):
+    """The lines the figure file suggests really do give \\ref{fig:ta} -> "1a", and cost no space."""
     _draw_all(layout)
-    body = figure_tex(layout, graphics_prefix=f"{layout.panels_dir}/", panel_refs=True)
-
-    def block(caption: str, label: str) -> str:
-        return (
-            "\\begin{figure}\n  \\centering\n"
-            + body
-            + f"  \\caption{{{caption}}}\\label{{{label}}}\n"
-            + f"  \\plotplatePanelLabels{{{label}}}\n\\end{{figure}}\n"
-        )
+    body = figure_tex(layout, graphics_prefix=f"{layout.panels_dir}/")
+    suggested = [
+        line.strip().removeprefix("% ")
+        for line in write_figure_scaffold(layout, tmp_path / "f.tex").read_text().splitlines()
+        if "phantomsubcaption" in line
+    ]
+    assert len(suggested) == len(layout.panels)
 
     doc = tmp_path / "doc.tex"
     doc.write_text(
-        "\\documentclass{article}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n"
-        "\\usepackage{cleveref}\n\\begin{document}\n"
-        + block("First", "fig:one")
-        + block("Second", "fig:two")
-        + "refs \\ref{fig:onea} \\ref{fig:oneb} \\ref{fig:twoa} \\ref{fig:twob}\n\n"
-        "cref \\cref{fig:onea} \\Cref{fig:twob}\n\\end{document}\n",
+        "\\documentclass{article}\n\\usepackage{graphicx}\n\\usepackage{subcaption}\n"
+        "\\usepackage{hyperref}\n\\begin{document}\n\\begin{figure}\n  \\centering\n"
+        + body
+        + "  \\caption{First}\\label{fig:t}\n  "
+        + "\n  ".join(suggested)
+        + "\n\\end{figure}\nrefs \\ref{fig:t} \\ref{fig:ta} \\ref{fig:tb}\n\\end{document}\n",
         encoding="utf-8",
     )
     try:
@@ -422,18 +389,15 @@ def test_panel_references_resolve_in_a_real_document(layout, tmp_path):
 
     with pymupdf.open(tmp_path / "doc.pdf") as pdf:
         text = " ".join(" ".join(page.get_text().split()) for page in pdf)
-    assert "refs 1a 1b 2a 2b" in text  # the letters follow the figure numbers
-    assert "cref fig. 1a Figure 2b" in text  # ... and cleveref keeps the letter
+    assert "refs 1 1a 1b" in text  # the figure, then its panels
 
 
 def test_the_figure_file_is_written_once_and_never_overwritten(layout, tmp_path):
     """A caption written by hand survives every rebuild: plotplate only rewrites the panels."""
-    from plotplate.latex import write_figure_scaffold, write_figure_tex
-
     scaffold = write_figure_scaffold(layout)
     assert scaffold.name == "t-figure.tex"
     text = scaffold.read_text()
-    assert "% \\label{fig:ta}  % panel A" in text  # one anchor per panel, ready to uncomment
+    assert "\\phantomsubcaption\\label{fig:ta}" in text  # one per panel, ready to uncomment
     assert "\\makeatletter" not in text and "\\gdef" not in text
     mine = scaffold.read_text().replace("\\caption{...}", "\\caption{A real caption.}")
     scaffold.write_text(mine)

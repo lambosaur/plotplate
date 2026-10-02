@@ -13,14 +13,9 @@ Usage in the manuscript::
       \caption{...}
     \end{figure}
 
-``--panel-refs`` adds one optional block, for manuscripts that reference a single panel: it
-defines ``\plotplatePanelLabels``, which turns the figure's letters into labels
-(``\ref{fig:7a}`` prints ``7a``) and replaces ``subfigure``'s sub-captions. It is off by
-default, because it is a page of ``\makeatletter`` in a file whose point is to be obvious.
-
-Panel letters use ``\plotplatePanelLabel``, defined with ``\providecommand`` from the layout's
-``panel_label`` style (size, weight, and ``latex_font`` for the font commands): define your own
-version in the preamble to override it entirely.
+Panel letters carry their own font commands, built from the layout's ``panel_label`` style (size,
+weight, and ``latex_font``), so the file defines nothing: change the letters in the layout and
+rebuild.
 
 They are stamped with ``\put`` at the millimetre the layout gives, over the panel's own margin,
 so they take no space of their own -- unlike ``subcaption``/``subfigure``, which add a line
@@ -40,19 +35,12 @@ def _fmt(value: float) -> str:
     return f"{value:.2f}"
 
 
-def figure_tex(
-    layout: Layout,
-    graphics_prefix: str = "panels/",
-    labels: bool = True,
-    panel_refs: bool = False,
-) -> str:
+def figure_tex(layout: Layout, graphics_prefix: str = "panels/", labels: bool = True) -> str:
     r"""LaTeX source of the figure body (no ``figure`` environment, no caption).
 
     What comes out is meant to be read by whoever opens it in Overleaf: a picture box of the
     figure's size, one ``\includegraphics`` per panel, one ``\makebox`` per letter. The only
-    definition is ``\plotplatePanelLabel``, which sets the letters' font and can be redefined in
-    the preamble. ``panel_refs`` adds the machinery for referencing a single panel, which is a
-    page of ``\makeatletter`` and is therefore left out unless it is asked for.
+    letters carry their font on themselves, so nothing is defined and nothing is loaded.
     """
     label = layout.style["panel_label"]
     weight = r"\bfseries" if label["weight"] == "bold" else ""
@@ -88,56 +76,8 @@ def figure_tex(
             y = layout.height - (spec.box.y + spec.label_offset[1])
             text = label_text(layout.style, spec.label)
             lines.append(f"\\put({_fmt(x)},{_fmt(y)}){{\\makebox(0,0)[lt]{{{{{font} {text}}}}}}}%")
-    lines.append("\\end{picture}}%")
-    if labels and panel_refs:
-        named = [(name, spec.label) for name, spec in layout.panels.items() if spec.label]
-        lines += _panel_reference_macros(named)
-    lines.append("")
+    lines += ["\\end{picture}}%", ""]
     return "\n".join(lines)
-
-
-def _panel_reference_macros(panels: list[tuple[str, str]]) -> list[str]:
-    r"""LaTeX that lets the manuscript reference one panel: ``\ref{fig:7a}`` prints ``7a``.
-
-    The figure's number is only final after ``\caption``, so the labels cannot be written here.
-    What is written is one macro per figure that defines them, which the author calls after the
-    caption::
-
-        \caption{...}\label{fig:7}
-        \plotplatePanelLabels{fig:7}       % defines fig:7a, fig:7b, ...
-        \plotplatePanelLabels{fig7:panel_} % ... or fig7:panel_a, for another convention
-
-    The argument is a plain prefix, so any naming convention is a matter of what is passed. A
-    panel whose name differs from its letter also gets ``<prefix>-<name>`` (``fig:7-roc_auc``),
-    which keeps pointing at the same panel when the letters are handed out again.
-
-    Everything is defined globally with ``\gdef``: the file is ``\input`` inside a ``figure``
-    environment, where a local definition would be gone by the next figure. Where ``cleveref``
-    is loaded, its own label is set too, so ``\cref`` prints "fig. 7a" rather than dropping the
-    letter.
-    """
-    if not panels:
-        return []
-    lines = [
-        "% Panel cross-references (--panel-refs). After \\caption, call%",
-        "% \\plotplatePanelLabels{<prefix>} to define <prefix>a, <prefix>b, ...%",
-        "\\makeatletter%",
-        "\\@ifundefined{plotplate@label}{%",
-        "  \\gdef\\plotplate@label#1#2{%",
-        "    \\begingroup%",
-        "      \\edef\\@currentlabel{\\thefigure#2}%",
-        "      \\@ifundefined{cref@currentlabel}{}{%",
-        "        \\protected@edef\\cref@currentlabel{[figure][\\arabic{figure}][]\\thefigure#2}}%",
-        "      \\label{#1}%",
-        "    \\endgroup}}{}%",
-        "\\gdef\\plotplatePanelLabels#1{%",
-    ]
-    for name, letter in panels:
-        lines.append(f"  \\plotplate@label{{#1{letter}}}{{{letter}}}%")
-        if name.lower() != letter.lower():
-            lines.append(f"  \\plotplate@label{{#1-{name}}}{{{letter}}}% panel {name}")
-    lines += ["  }%", "\\makeatother%"]
-    return lines
 
 
 def write_figure_tex(
@@ -145,11 +85,10 @@ def write_figure_tex(
     out: str | Path | None = None,
     graphics_prefix: str = "panels/",
     labels: bool = True,
-    panel_refs: bool = False,
 ) -> Path:
     """Write the snippet to ``out`` (default ``<layout dir>/<name>.tex``)."""
     target = Path(out) if out is not None else layout.base_dir / f"{layout.name}.tex"
-    target.write_text(figure_tex(layout, graphics_prefix, labels, panel_refs), encoding="utf-8")
+    target.write_text(figure_tex(layout, graphics_prefix, labels), encoding="utf-8")
     return target
 
 
@@ -186,11 +125,12 @@ def write_figure_scaffold(
         f"  \\input{{{body}}}%",
         "  \\caption{...}",
         f"  \\label{{{anchor}}}",
-        "  % To link to one panel, uncomment its line: each prints the figure's number, so",
-        f"  % write the letter yourself, as in Figure~\\ref{{{anchor}}}a.",
+        f"  % To reference one panel (\\ref{{{anchor}a}} prints 7a), load subcaption in the",
+        "  % preamble and uncomment the lines below. They print nothing and take no space.",
     ]
     lines += [
-        f"  % \\label{{{anchor}{spec.label.lower()}}}  % panel {name}"
+        f"  % \\begin{{subfigure}}[t]{{0pt}}\\phantomsubcaption"
+        f"\\label{{{anchor}{spec.label.lower()}}}\\end{{subfigure}}%  panel {name}"
         for name, spec in layout.panels.items()
         if spec.label
     ]
@@ -199,12 +139,7 @@ def write_figure_scaffold(
     return target
 
 
-def bundle(
-    layout: Layout,
-    out_dir: str | Path,
-    graphics_prefix: str | None = None,
-    panel_refs: bool = False,
-) -> Path:
+def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = None) -> Path:
     r"""Copy ``<name>.tex`` and the panel PDFs into ``out_dir`` for upload to Overleaf.
 
     The composed figure (``preview.pdf``) is copied too, as ``<name>.pdf``, when it exists. It
@@ -219,7 +154,6 @@ def bundle(
         out_dir: destination folder (created). Upload its content as-is.
         graphics_prefix: path of the panels as seen from the Overleaf project root,
             default ``figures/<name>/``, matching an upload of ``out_dir`` there.
-        panel_refs: also write the optional block that lets the manuscript reference one panel.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -239,9 +173,7 @@ def bundle(
     write_figure_scaffold(
         layout, out_dir / f"{layout.name}-figure.tex", graphics_prefix=prefix, force=True
     )
-    return write_figure_tex(
-        layout, out_dir / f"{layout.name}.tex", graphics_prefix=prefix, panel_refs=panel_refs
-    )
+    return write_figure_tex(layout, out_dir / f"{layout.name}.tex", graphics_prefix=prefix)
 
 
 def standalone_document(layout: Layout, graphics_prefix: str = "panels/", labels: bool = True) -> str:
