@@ -6,6 +6,15 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
 
 ## Unreleased
 
+### Changed
+
+- The generated `<name>.tex` defines nothing at all: the letters carry their font inline, where it
+  used to be a `\providecommand`.
+  The file is a picture box, one `\includegraphics` per panel and one `\makebox` per letter — nothing
+  to know about before pasting it into a manuscript.
+  The letters' appearance is set in the layout's `panel_label`, which also drives the preview and the
+  export.
+
 ### Added
 
 - `plotplate latex --panel-refs` / `plotplate bundle --panel-refs`, for a manuscript that references a
@@ -19,6 +28,8 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
   An optional argument covers other naming conventions (`\plotplatePanelLabels[:panel-]{fig7}` gives
   `fig7:panel-a`), and `cleveref` keeps the letter (`\cref` prints "fig. 7a").
   Verified by compiling a document with two figures, `hyperref` and `cleveref`.
+- `<name>-figure.tex` also lists one commented-out `\label` per panel: uncomment to link to a panel,
+  and write the letter in the text (`Figure~\ref{fig:7}a`), which needs no macro at all.
 - `<name>-figure.tex`: the figure environment, the placement, the caption and the label, written once
   with a placeholder caption and never overwritten, so what is edited by hand survives every rebuild.
   It includes `<name>.tex`, which holds the panels and stays generated.

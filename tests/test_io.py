@@ -104,7 +104,7 @@ def test_preview_and_detect_recover_layout(layout, tmp_path):
 def test_latex_snippet_positions(layout):
     tex = figure_tex(layout)
     assert "\\put(93.50,0.00){\\includegraphics{panels/B.pdf}}" in tex
-    assert "\\makebox(0,0)[lt]{\\plotplatePanelLabel{a}}" in tex
+    assert "\\makebox(0,0)[lt]{{\\fontsize{8pt}{8pt}\\selectfont\\sffamily\\bfseries a}}" in tex
     for line in tex.splitlines():  # no stray spaces leak into the enclosing paragraph
         assert "%" in line
 
@@ -323,7 +323,7 @@ def test_panel_letters_take_no_space_and_follow_the_style(layout, tmp_path):
     assert "subfigure" not in tex and "subcaption" not in tex  # those would add a line per panel
     assert f"\\begin{{picture}}({layout.width:.2f},{layout.height:.2f})" in tex
     assert "\\fontsize{8pt}{8pt}\\selectfont\\sffamily\\bfseries" in tex  # from the style
-    assert "\\makebox(0,0)[lt]{\\plotplatePanelLabel{a}}" in tex  # nature: lower case
+    assert "\\selectfont\\sffamily\\bfseries a}" in tex  # nature: lower case, inline font
 
     styled = pp.Layout(
         {
@@ -332,7 +332,7 @@ def test_panel_letters_take_no_space_and_follow_the_style(layout, tmp_path):
         },
         layout.path,
     )
-    assert "\\plotplatePanelLabel{(a)}" in figure_tex(styled)
+    assert "\\bfseries (a)}" in figure_tex(styled)
     assert "\\selectfont\\fontspec{Arial}\\bfseries" in figure_tex(styled)
 
 
@@ -345,12 +345,12 @@ def test_the_label_format_reaches_the_preview_too(layout, tmp_path):
     assert ">a)<" in svg
 
 
-def test_the_default_tex_defines_nothing_but_the_letter_font(layout):
+def test_the_default_tex_defines_nothing_at_all(layout):
     """The file is meant to be read in Overleaf: a picture, the images, the letters. Nothing else."""
     tex = figure_tex(layout)
     assert "\\makeatletter" not in tex and "\\gdef" not in tex and "@" not in tex
     defined = [line for line in tex.splitlines() if "\\providecommand" in line or "\\def" in line]
-    assert len(defined) == 1 and "plotplatePanelLabel" in defined[0]  # the letter font, overridable
+    assert not defined  # nothing at all is defined: the file is only pictures and text
 
 
 def test_panel_reference_macros_are_opt_in(layout):
@@ -432,6 +432,9 @@ def test_the_figure_file_is_written_once_and_never_overwritten(layout, tmp_path)
 
     scaffold = write_figure_scaffold(layout)
     assert scaffold.name == "t-figure.tex"
+    text = scaffold.read_text()
+    assert "% \\label{fig:ta}  % panel A" in text  # one anchor per panel, ready to uncomment
+    assert "\\makeatletter" not in text and "\\gdef" not in text
     mine = scaffold.read_text().replace("\\caption{...}", "\\caption{A real caption.}")
     scaffold.write_text(mine)
 
