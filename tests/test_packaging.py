@@ -23,9 +23,7 @@ def _data_files() -> list[str]:
     return sorted(
         str(path.relative_to(SRC))
         for path in SRC.rglob("*")
-        if path.is_file()
-        and path.suffix not in {".py", ".pyc"}
-        and "__pycache__" not in path.parts
+        if path.is_file() and path.suffix not in {".py", ".pyc"} and "__pycache__" not in path.parts
     )
 
 

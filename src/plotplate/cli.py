@@ -942,7 +942,10 @@ def cmd_skills(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from . import __version__
+
     parser = argparse.ArgumentParser(prog="plotplate", description=__doc__)
+    parser.add_argument("--version", action="version", version=f"plotplate {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add(name: str, func: object, help_text: str) -> argparse.ArgumentParser:
