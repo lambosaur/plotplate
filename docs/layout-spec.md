@@ -148,7 +148,7 @@ They are stamped on the assembled figure — by the generated LaTeX, and identic
 `plotplate preview` / `export` — at the millimetre the layout gives:
 
 ```latex
-\put(0.00,150.00){\makebox(0,0)[lt]{\plotplatePanelLabel{a}}}%   % panel A's corner
+\put(0.00,150.00){\makebox(0,0)[lt]{{\fontsize{8pt}{8pt}\selectfont\sffamily\bfseries a}}}%
 ```
 
 Two consequences worth knowing:
@@ -157,10 +157,11 @@ Two consequences worth knowing:
   own under each panel and makes the figure taller, so the panels have to shrink to compensate.
   Here the letter sits over the panel's own margin — the strip that holds the tick labels — and the
   assembled figure is exactly the size `area:` says.
-- **One definition, two renderers.**
+- **One setting, three renderers.**
   `panel_label` in the style sets size, weight, case, offset, `format` (`"({letter})"` for `(a)`) and `latex_font`
   (the LaTeX font commands, `\sffamily` by default).
-  The preview and the export read the same settings, so what you see is what compiles.
+  The generated LaTeX carries them on each letter rather than defining anything, and the preview and
+  the export read the same settings, so what you see is what compiles.
 
 What journals actually require is case, weight and font — not a clearance in millimetres.
 The bundled presets record it per journal (`plotplate journals`): Nature lower-case bold 8 pt, Science

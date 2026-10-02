@@ -131,8 +131,9 @@ decision.
 - `plotplate diff` reports geometry and keys; it does not read notebook content, so an agent (or the
   user) decides how drawing code moves.
 - Panel letters in the LaTeX output use the font commands of `panel_label.latex_font` (`\sffamily` by
-  default, so the document's sans); set it to `\fontspec{Arial}` under XeLaTeX, or redefine
-  `\plotplatePanelLabel`, to match `plotplate export` exactly.
+  default, so the document's sans); set it to `\fontspec{Arial}` under XeLaTeX to match
+  `plotplate export` exactly.
+  The commands are written onto each letter, so the generated file defines nothing at all.
 - The letter is stamped with `\put`, not set with `subcaption`/`subfigure`: it takes no space, so the
   assembled figure is exactly the size the layout says.
   `subfigure` would add a line under each panel and shrink the panels to compensate.

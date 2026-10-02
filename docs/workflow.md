@@ -460,13 +460,14 @@ One thing to know before sending it: an exported file draws the panel letters it
 layout's font (Arial by default), while a manuscript that uses `\input{<name>.tex}` draws them with
 LaTeX, in the document's font.
 The two differ only in the letters, and only if those fonts differ.
-Make them agree by redefining the macro in the preamble to the same face:
+Make them agree in the layout, which writes the font commands onto every letter of the generated
+`.tex`:
 
-```latex
-\renewcommand{\plotplatePanelLabel}[1]{{\fontsize{8pt}{8pt}\selectfont\fontspec{Arial}\bfseries #1}}
+```yaml
+style:
+  panel_label: {latex_font: "\\fontspec{Arial}"}   # XeLaTeX
 ```
 
-(or set `panel_label.latex_font` in the layout, which writes exactly that into the generated `.tex`).
 Compiling the figure through LaTeX to export it would be the other way round — it would make the
 export match the manuscript instead — at the price of a TeX engine in the export path and of a
 preamble plotplate cannot know.
