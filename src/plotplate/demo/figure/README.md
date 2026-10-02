@@ -83,7 +83,7 @@ what plotplate exists to prevent. Rebuild against a layout to adopt it.
 The demo panels need pandas, pyarrow, scipy and seaborn in the same environment as `plotplate`:
 
 ```sh
-pipx install "plotplate[demo] @ git+https://github.com/<org>/plotplate"
+pipx install "plotplate[demo] @ git+https://github.com/lambosaur/plotplate"
 # or, for an existing pipx install:
 pipx inject plotplate pandas pyarrow scipy seaborn
 ```

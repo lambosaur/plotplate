@@ -6,7 +6,7 @@ To use the tool, see the [README](README.md).
 ## Setup
 
 ```sh
-git clone https://github.com/<org>/plotplate.git
+git clone https://github.com/lambosaur/plotplate.git
 cd plotplate
 make setup
 ```

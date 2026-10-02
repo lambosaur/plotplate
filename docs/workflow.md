@@ -65,8 +65,8 @@ Two installations serve two purposes:
 
 | what | where | how |
 | --- | --- | --- |
-| the library imported by panel notebooks, and `plotplate` | the project environment where notebooks run | `pixi add "python>=3.12"`, then `pixi add --pypi plotplate --git https://github.com/<org>/plotplate.git --branch main` |
-| the `plotplate` command alone | once per user, isolated | `pipx install "plotplate @ git+https://github.com/<org>/plotplate"` or `uv tool install …` |
+| the library imported by panel notebooks, and `plotplate` | the project environment where notebooks run | `pixi add "python>=3.12"`, then `pixi add --pypi plotplate --git https://github.com/lambosaur/plotplate.git --branch main` |
+| the `plotplate` command alone | once per user, isolated | `pipx install "plotplate @ git+https://github.com/lambosaur/plotplate"` or `uv tool install …` |
 
 Only `plotplate build` (and `plotplate demo --build`) executes your notebooks; every other command
 needs plotplate alone.
@@ -82,7 +82,7 @@ For a pinned version in a Pixi project:
 
 ```toml
 [pypi-dependencies]
-plotplate = { git = "https://github.com/<org>/plotplate.git", rev = "<tag>" }
+plotplate = { git = "https://github.com/lambosaur/plotplate.git", rev = "v0.1.0" }
 ```
 
 After installing fonts on the machine, rebuild matplotlib's font cache once:

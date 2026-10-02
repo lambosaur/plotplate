@@ -28,16 +28,18 @@ Use it to build layouts from PDFs, draw wireframes, preview and export, in any f
 
 ```sh
 # pixi (a global environment you can extend with conda packages)
-pixi global install --git https://github.com/<org>/plotplate.git plotplate
+pixi global install --git https://github.com/lambosaur/plotplate.git plotplate
 
 # or pipx
-pipx install "plotplate @ git+https://github.com/<org>/plotplate"
+pipx install "plotplate @ git+https://github.com/lambosaur/plotplate"
 
 # or uv
-uv tool install "plotplate @ git+https://github.com/<org>/plotplate"
+uv tool install "plotplate @ git+https://github.com/lambosaur/plotplate"
 ```
 
 All three work the same on Linux and macOS, and nothing is cloned into your projects.
+The repository is private, so these need an account with access to it (`gh auth login`, or an SSH key,
+depending on the URL form).
 The tool needs nothing beyond its own dependencies (matplotlib, numpy, pyyaml, pymupdf).
 
 ### 2. The library, in the environment that draws your figures
@@ -50,7 +52,7 @@ cd my-project
 pixi init                       # only if the project has no pixi.toml yet
 pixi add "python>=3.12"
 pixi add --pypi plotplate \
-    --git https://github.com/<org>/plotplate.git --branch main   # or --tag vX.Y.Z
+    --git https://github.com/lambosaur/plotplate.git --tag v0.1.0   # or --branch dev
 pixi run plotplate --help       # the command is available here too
 ```
 
@@ -58,7 +60,7 @@ which writes:
 
 ```toml
 [pypi-dependencies]
-plotplate = { git = "https://github.com/<org>/plotplate.git", branch = "main" }
+plotplate = { git = "https://github.com/lambosaur/plotplate.git", tag = "v0.1.0" }
 ```
 
 Run the commands through that environment (`pixi run plotplate build figures/figure_1`):
