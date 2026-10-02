@@ -156,8 +156,13 @@ def test_cli_build_check_bundle(layout, tmp_path, capsys):
     assert (tmp_path / "overleaf" / "t.pdf").exists()  # ... as one file, for a co-author
     assert "makeatletter" not in tex  # the bundled file stays the simplest thing that works
     out = capsys.readouterr().out
-    assert "\\input{figures/t/t.tex}" in out  # the exact line to paste in the manuscript
+    assert "\\input{figures/t/t-figure.tex}" in out  # the one line the manuscript needs
     assert "\\includegraphics{figures/t/t.pdf}" in out  # ... or this one, once hand-finished
+
+    # the half the author owns: the figure environment, the caption, the label
+    scaffold = (tmp_path / "overleaf" / "t-figure.tex").read_text()
+    assert "\\begin{figure}" in scaffold and "\\caption{...}" in scaffold
+    assert "\\input{figures/t/t.tex}" in scaffold and "\\label{fig:t}" in scaffold
     assert main(["resolve", str(layout.path), "-o", str(tmp_path / "resolved.yaml")]) == 0
     resolved = load_yaml(tmp_path / "resolved.yaml")
     assert "mosaic" not in resolved and resolved["panels"]["B"]["axes"]["main"]["box"]
@@ -399,3 +404,19 @@ def test_panel_references_resolve_in_a_real_document(layout, tmp_path):
         text = " ".join(" ".join(page.get_text().split()) for page in pdf)
     assert "refs 1a 1b 2a 2b" in text  # the letters follow the figure numbers
     assert "cref fig. 1a Figure 2b" in text  # ... and cleveref keeps the letter
+
+
+def test_the_figure_file_is_written_once_and_never_overwritten(layout, tmp_path):
+    """A caption written by hand survives every rebuild: plotplate only rewrites the panels."""
+    from plotplate.latex import write_figure_scaffold, write_figure_tex
+
+    scaffold = write_figure_scaffold(layout)
+    assert scaffold.name == "t-figure.tex"
+    mine = scaffold.read_text().replace("\\caption{...}", "\\caption{A real caption.}")
+    scaffold.write_text(mine)
+
+    write_figure_tex(layout)  # as `plotplate build` does, over and over
+    write_figure_scaffold(layout)
+    assert scaffold.read_text() == mine  # untouched
+
+    assert "A real caption" not in write_figure_scaffold(layout, force=True).read_text()

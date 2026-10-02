@@ -17,8 +17,12 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
   An optional argument covers other naming conventions (`\plotplatePanelLabels[:panel-]{fig7}` gives
   `fig7:panel-a`), and `cleveref` keeps the letter (`\cref` prints "fig. 7a").
   Verified by compiling a document with two figures, `hyperref` and `cleveref`.
-- `plotplate bundle` copies the composed figure as `<name>.pdf` beside the panels, and prints the
-  block to paste into the manuscript.
+- `<name>-figure.tex`: the figure environment, the placement, the caption and the label, written once
+  with a placeholder caption and never overwritten, so what is edited by hand survives every rebuild.
+  It includes `<name>.tex`, which holds the panels and stays generated.
+  The manuscript then needs one line per figure.
+- `plotplate bundle` copies the composed figure as `<name>.pdf` beside the panels, and prints the line
+  to paste into the manuscript.
 
 ### Fixed
 

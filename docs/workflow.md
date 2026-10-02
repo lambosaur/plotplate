@@ -344,15 +344,36 @@ plotplate bundle layout.yaml build/overleaf/figure_1
 
 1. Upload the content of `build/overleaf/figure_1/` to `figures/figure_1/` in the Overleaf project.
 1. Make sure the preamble loads `graphicx`.
-1. Include the figure:
+1. Include it with one line, wherever the figure belongs:
 
 ```latex
-\begin{figure}
+\input{figures/figure_1/figure_1-figure.tex}
+```
+
+### Two files, and only one of them is generated
+
+| file | who owns it | what is in it |
+| --- | --- | --- |
+| `figure_1-figure.tex` | **you** | the `figure` environment, the placement, the caption, the label |
+| `figure_1.tex` | plotplate | the panels, placed; rewritten by every `plotplate build` |
+
+`figure_1-figure.tex` is written once, with a caption placeholder, and **never overwritten** — edit it
+as much as you like:
+
+```latex
+% figure_1: this file is yours. Edit the caption, the label, the
+% placement ([t], [h!], ...), or wrap it in a starred figure* for a wide one.
+% plotplate never overwrites it; it rewrites the panels in the file included below.
+\begin{figure}[tbp]
   \centering
-  \input{figures/figure_1/figure_1.tex}
-  \caption{...}\label{fig:figure_1}
+  \input{figures/figure_1/figure_1.tex}%
+  \caption{...}
+  \label{fig:figure_1}
 \end{figure}
 ```
+
+If you would rather keep the captions in the manuscript, ignore that file and `\input` the panels file
+directly inside your own `figure` environment — it is the same figure either way.
 
 ### What is in the file
 

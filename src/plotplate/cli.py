@@ -616,7 +616,7 @@ def _copy_tree(source: Any, target: Path) -> None:
 
 
 def cmd_latex(args: argparse.Namespace) -> int:
-    from .latex import write_figure_tex
+    from .latex import write_figure_scaffold, write_figure_tex
 
     layout = Layout.load(args.layout)
     out = write_figure_tex(
@@ -627,6 +627,9 @@ def cmd_latex(args: argparse.Namespace) -> int:
         panel_refs=args.panel_refs,
     )
     print(f"wrote {_rel(out)}")
+    if not args.no_scaffold:
+        scaffold = write_figure_scaffold(layout, graphics_prefix=args.prefix)
+        print(f"{'wrote' if scaffold.stat().st_size else 'kept'} {_rel(scaffold)}: yours to edit")
     return 0
 
 
@@ -638,10 +641,12 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     out = bundle(layout, args.output_dir, graphics_prefix=args.prefix, panel_refs=args.panel_refs)
     prefix = args.prefix if args.prefix is not None else f"figures/{layout.name}/"
     print(f"wrote {_rel(out.parent)}: upload its content to {prefix} in the Overleaf project")
-    print("then, in the manuscript:\n")
-    print("  \\begin{figure}[t]\n    \\centering")
-    print(f"    \\input{{{prefix}{layout.name}.tex}}")
-    print(f"    \\caption{{...}}\n    \\label{{fig:{layout.name}}}\n  \\end{{figure}}")
+    print("then, one line in the manuscript:\n")
+    print(f"  \\input{{{prefix}{layout.name}-figure.tex}}\n")
+    print(
+        f"{layout.name}-figure.tex holds the figure environment, the caption and the label, and is\n"
+        f"yours to edit; {layout.name}.tex holds the panels and is rewritten by plotplate build."
+    )
     if (out.parent / f"{layout.name}.pdf").exists():
         print(
             f"\n{layout.name}.pdf is the same figure as one file, for looking at and for "
@@ -792,7 +797,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     import os
     import subprocess
 
-    from .latex import write_figure_tex
+    from .latex import write_figure_scaffold, write_figure_tex
     from .render import preview
 
     layout = Layout.load(args.layout)
@@ -817,7 +822,9 @@ def cmd_build(args: argparse.Namespace) -> int:
             failed.append(name)
     paths = preview(layout)
     tex = write_figure_tex(layout)
+    scaffold = write_figure_scaffold(layout)  # once; a caption written there survives rebuilds
     print(f"wrote {paths['pdf'].name}, {paths['png'].name}, {paths['svg'].name}, {tex.name}")
+    print(f"  {scaffold.name}: the figure environment and its caption, yours to edit")
     status = cmd_check(args)
     if failed:
         print(f"FAILED scripts: {failed}")
@@ -1113,6 +1120,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output")
     p.add_argument("--prefix", default="panels/", help="graphics path prefix in LaTeX")
     p.add_argument("--no-labels", action="store_true")
+    p.add_argument(
+        "--no-scaffold",
+        action="store_true",
+        help="do not create <name>-figure.tex (the figure environment and caption)",
+    )
     p.add_argument(
         "--panel-refs",
         action="store_true",
