@@ -4,7 +4,10 @@ Notable changes per release.
 Versions follow [semantic versioning](https://semver.org); before 1.0 the layout file format may still
 change, and when it does, `schema:` is bumped and the old form keeps loading.
 
-## Unreleased
+## 0.2.0 — 2026-10-02
+
+The LaTeX output, reworked after using it on a real manuscript: two files instead of one, and nothing
+defined in either.
 
 ### Changed
 
@@ -17,15 +20,17 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
 
 ### Added
 
-- `<name>-figure.tex` lists, commented out, one `\phantomsubcaption` line per panel: uncomment them
-  and `\ref{fig:7a}` prints `7a`, `\subref` prints `a`.
+- `<name>-figure.tex`: the figure environment, the placement, the caption and the label — the parts
+  that belong to the text.
+  Written once with a placeholder caption and **never overwritten**, so what is edited by hand
+  survives every rebuild.
+  It includes `<name>.tex`, which holds the panels and stays generated, so the manuscript needs one
+  line per figure.
+  It also lists, commented out, one `\phantomsubcaption` line per panel: uncomment them and
+  `\ref{fig:7a}` prints `7a`, `\subref` prints `a`.
   That is `subcaption` doing the one job `subfigure` was being used for — no plotplate macro, and no
   space taken, verified by compiling with and without the lines and finding the caption in the same
   place.
-- `<name>-figure.tex`: the figure environment, the placement, the caption and the label, written once
-  with a placeholder caption and never overwritten, so what is edited by hand survives every rebuild.
-  It includes `<name>.tex`, which holds the panels and stays generated.
-  The manuscript then needs one line per figure.
 - `plotplate bundle` copies the composed figure as `<name>.pdf` beside the panels, and prints the line
   to paste into the manuscript.
 
