@@ -1,5 +1,7 @@
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
 import pymupdf
@@ -107,14 +109,23 @@ def test_latex_snippet_positions(layout):
         assert "%" in line
 
 
-@pytest.mark.skipif(shutil.which("tectonic") is None, reason="tectonic not installed")
+def _tectonic() -> str | None:
+    """The tectonic binary, including the one beside this interpreter (pixi puts it there)."""
+    found = shutil.which("tectonic")
+    if found:
+        return found
+    sibling = Path(sys.executable).parent / "tectonic"
+    return str(sibling) if sibling.exists() else None
+
+
+@pytest.mark.skipif(_tectonic() is None, reason="tectonic not installed")
 def test_latex_matches_preview(layout, tmp_path):
     _draw_all(layout)
     doc = tmp_path / "doc.tex"
     doc.write_text(standalone_document(layout, graphics_prefix=f"{layout.panels_dir}/", labels=False))
     try:
         subprocess.run(
-            ["tectonic", doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
+            [_tectonic(), doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
         )
     except subprocess.CalledProcessError as exc:  # e.g. offline, bundle not cached
         pytest.skip(f"tectonic failed: {exc.stderr[-300:]!r}")
@@ -143,6 +154,7 @@ def test_cli_build_check_bundle(layout, tmp_path, capsys):
     assert "figures/t/A.pdf" in tex
     assert (tmp_path / "overleaf" / "B.pdf").exists()
     assert (tmp_path / "overleaf" / "t.pdf").exists()  # ... as one file, for a co-author
+    assert "\\gdef\\plotplatePanelLabels" in tex  # the bundle can reference panels too
     out = capsys.readouterr().out
     assert "\\input{figures/t/t.tex}" in out  # the exact line to paste in the manuscript
     assert "\\includegraphics{figures/t/t.pdf}" in out  # ... or this one, once hand-finished
@@ -326,3 +338,56 @@ def test_the_label_format_reaches_the_preview_too(layout, tmp_path):
     styled = pp.Layout({**layout.raw, "style": {"panel_label": {"format": "{letter})"}}}, layout.path)
     svg = _preview_svg(styled, tmp_path / "preview.svg", labels=True).read_text()
     assert ">a)<" in svg
+
+
+def test_panel_reference_macros_are_written(layout):
+    """The .tex carries the letters it stamped, so the manuscript can reference one panel."""
+    tex = figure_tex(layout)
+    assert "\\gdef\\plotplate@panels{a,b}" in tex  # the stamped letters, in the preset's case
+    assert "\\gdef\\plotplatePanelLabels" in tex
+    assert "\\plotplate@panels" not in figure_tex(layout, labels=False)  # no letters, no labels
+
+    upper = pp.Layout({**layout.raw, "style": {"panel_label": {"case": "upper"}}}, layout.path)
+    assert "\\gdef\\plotplate@panels{A,B}" in figure_tex(upper)  # Science and Cell letter that way
+    formatted = pp.Layout(
+        {**layout.raw, "style": {"panel_label": {"format": "({letter})"}}}, layout.path
+    )
+    # the reference is "7a", never "7(a)": the format is for the stamp, not for the label
+    assert "\\gdef\\plotplate@panels{a,b}" in figure_tex(formatted)
+
+
+@pytest.mark.skipif(_tectonic() is None, reason="tectonic not installed")
+def test_panel_references_resolve_in_a_real_document(layout, tmp_path):
+    """Two figures in one document: \\ref prints <figure number><letter>, and cleveref agrees."""
+    _draw_all(layout)
+    body = figure_tex(layout, graphics_prefix=f"{layout.panels_dir}/")
+
+    def block(caption: str, label: str) -> str:
+        return (
+            "\\begin{figure}\n  \\centering\n"
+            + body
+            + f"  \\caption{{{caption}}}\\label{{{label}}}\n"
+            + f"  \\plotplatePanelLabels{{{label}}}\n\\end{{figure}}\n"
+        )
+
+    doc = tmp_path / "doc.tex"
+    doc.write_text(
+        "\\documentclass{article}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n"
+        "\\usepackage{cleveref}\n\\begin{document}\n"
+        + block("First", "fig:one")
+        + block("Second", "fig:two")
+        + "refs \\ref{fig:onea} \\ref{fig:oneb} \\ref{fig:twoa} \\ref{fig:twob}\n\n"
+        "cref \\cref{fig:onea} \\Cref{fig:twob}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    try:
+        subprocess.run(
+            [_tectonic(), doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
+        )
+    except subprocess.CalledProcessError as exc:  # e.g. offline, bundle not cached
+        pytest.skip(f"tectonic failed: {exc.stderr[-300:]!r}")
+
+    with pymupdf.open(tmp_path / "doc.pdf") as pdf:
+        text = " ".join(" ".join(page.get_text().split()) for page in pdf)
+    assert "refs 1a 1b 2a 2b" in text  # the letters follow the figure numbers
+    assert "cref fig. 1a Figure 2b" in text  # ... and cleveref keeps the letter

@@ -4,6 +4,24 @@ Notable changes per release.
 Versions follow [semantic versioning](https://semver.org); before 1.0 the layout file format may still
 change, and when it does, `schema:` is bumped and the old form keeps loading.
 
+## Unreleased
+
+### Added
+
+- Panel cross-references in the generated LaTeX: the `.tex` lists the letters it stamped and defines
+  `\plotplatePanelLabels{<figure label>}`, called after `\caption`, so that `\ref{fig:7a}` prints `7a`
+  and links to the figure.
+  An optional argument covers other naming conventions (`\plotplatePanelLabels[:panel-]{fig7}` gives
+  `fig7:panel-a`), and `cleveref` keeps the letter (`\cref` prints "fig. 7a").
+  Verified by compiling a document with two figures, `hyperref` and `cleveref`.
+- `plotplate bundle` copies the composed figure as `<name>.pdf` beside the panels, and prints the
+  block to paste into the manuscript.
+
+### Fixed
+
+- The LaTeX tests found no engine when run through the pixi environment, so they always skipped; they
+  now look for `tectonic` beside the interpreter too.
+
 ## 0.1.0 — 2026-10-02
 
 First tagged release: the whole path from an existing figure to a journal-ready one works, on the demo

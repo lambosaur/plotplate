@@ -350,9 +350,57 @@ plotplate bundle layout.yaml build/overleaf/figure_1
 \begin{figure}
   \centering
   \input{figures/figure_1/figure_1.tex}
-  \caption{...}
+  \caption{...}\label{fig:figure_1}
+  \plotplatePanelLabels{fig:figure_1}   % optional: lets you write \ref{fig:figure_1a}
 \end{figure}
 ```
+
+### What the `.tex` is, and what it is not
+
+- **`plotplate build` does not use LaTeX.**
+  It runs the panel scripts, then composes the preview in Python by pasting the panel PDFs together.
+  The `.tex` is an *extra* output, for the manuscript.
+- **It is a figure body, not a figure.**
+  No `figure` environment, no caption, no label: those are the manuscript's, and `\caption` is also
+  what fixes the figure's number.
+- **It has no link to `layout.yaml`.**
+  The size is written into it in millimetres (`\begin{picture}(183.00,120.00)` with
+  `\unitlength=1mm`), and the panel PDFs already have their final size.
+  `layout.yaml` is where you *choose* that size while designing; once the `.tex` is written, nothing
+  reads the layout again.
+  If the size you chose is wider than the manuscript's text width, LaTeX reports an overfull box —
+  that is the check doing its job.
+- **No `subfigure` / `subcaption`, on purpose.**
+  They add a line under each panel, so the figure grows and the panels shrink
+  ([layout-spec.md](layout-spec.md#panel-letters)).
+  The `.tex` places each panel at a fixed position with `\put` and stamps the letter on top, which
+  costs no space.
+- **So do not wrap the panels in `subfigure`.**
+  An empty `\caption{}` inside a `subfigure` prints its own `(a)` under the panel, and the figure
+  would carry two sets of letters.
+
+### Referencing a panel
+
+`\plotplatePanelLabels{fig:figure_1}` defines `fig:figure_1a`, `fig:figure_1b`, … so that
+`\ref{fig:figure_1a}` prints `7a` and links to the figure.
+It must come **after `\caption`**, which is when the figure's number is final, and inside the same
+`figure` environment.
+
+```latex
+See Figure~\ref{fig:figure_1a} for the mutation scan.
+```
+
+- The letter is the one stamped on the panel, in the case of the journal preset (`7a` for Nature, `7A`
+  for Cell or Science).
+  A `panel_label.format` such as `({letter})` does not reach the reference: it prints `7a`, never
+  `7(a)`.
+- For another naming convention, the optional argument is inserted between the prefix and the letter:
+  `\plotplatePanelLabels[:panel-]{fig7}` defines `fig7:panel-a`.
+- With `cleveref`, `\cref{fig:figure_1a}` prints "fig. 7a" and `\Cref` "Figure 7a".
+- It needs two LaTeX passes, like any `\label`, and works with or without `hyperref`.
+
+Verified with XeTeX on a document holding two plotplate figures, `hyperref` and `cleveref`
+(`tests/test_io.py::test_panel_references_resolve_in_a_real_document`).
 
 To change the panel-letter font, define `\plotplatePanelLabel` in the preamble:
 
@@ -416,6 +464,27 @@ character once the drawing is no longer needed.
 
 The hand-finished file is a manuscript artefact, so it belongs in the manuscript repository next to
 `figures.tex` — not in the figure folder, where the next `plotplate build` would be the authority.
+
+### If the journal asks for SVG
+
+`plotplate export` writes PDF, PNG or TIFF; an SVG is one `pymupdf` call away from the exported PDF
+(`page.get_svg_image(text_as_path=False)`).
+
+One thing to know before sending it: an exported file draws the panel letters itself, with the
+layout's font (Arial by default), while a manuscript that uses `\input{<name>.tex}` draws them with
+LaTeX, in the document's font.
+The two differ only in the letters, and only if those fonts differ.
+Make them agree by redefining the macro in the preamble to the same face:
+
+```latex
+\renewcommand{\plotplatePanelLabel}[1]{{\fontsize{8pt}{8pt}\selectfont\fontspec{Arial}\bfseries #1}}
+```
+
+(or set `panel_label.latex_font` in the layout, which writes exactly that into the generated `.tex`).
+Compiling the figure through LaTeX to export it would be the other way round — it would make the
+export match the manuscript instead — at the price of a TeX engine in the export path and of a
+preamble plotplate cannot know.
+It is not done, and this is why.
 
 ## 5. Export the production file
 

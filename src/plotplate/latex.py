@@ -13,6 +13,10 @@ Usage in the manuscript::
       \caption{...}
     \end{figure}
 
+The file also defines ``\plotplatePanelLabels``: called after ``\caption``, it turns the figure's
+letters into labels (``\ref{fig:7a}`` prints ``7a``), which is what replaces ``subfigure``'s
+sub-captions for cross-referencing.
+
 Panel letters use ``\plotplatePanelLabel``, defined with ``\providecommand`` from the layout's
 ``panel_label`` style (size, weight, and ``latex_font`` for the font commands): define your own
 version in the preamble to override it entirely.
@@ -74,8 +78,54 @@ def figure_tex(layout: Layout, graphics_prefix: str = "panels/", labels: bool = 
                 f"\\put({_fmt(x)},{_fmt(y)})"
                 f"{{\\makebox(0,0)[lt]{{\\plotplatePanelLabel{{{text}}}}}}}%"
             )
-    lines += ["\\end{picture}}%", ""]
+    lines.append("\\end{picture}}%")
+    if labels:
+        letters = [spec.label for spec in layout.panels.values() if spec.label]
+        lines += _panel_reference_macros(letters)
+    lines.append("")
     return "\n".join(lines)
+
+
+def _panel_reference_macros(letters: list[str]) -> list[str]:
+    r"""LaTeX that lets the manuscript reference one panel: ``\ref{fig:7a}`` prints ``7a``.
+
+    The figure's number is only final after ``\caption``, so the labels cannot be written here;
+    what is written is the list of letters and one macro that turns it into labels, which the
+    author calls after the caption::
+
+        \caption{...}\label{fig:7}
+        \plotplatePanelLabels{fig:7}        % defines fig:7a, fig:7b, ...
+        \plotplatePanelLabels[:panel-]{fig7} % ... or fig7:panel-a, for other conventions
+
+    Everything is defined globally with ``\gdef``: the file is ``\input`` inside a ``figure``
+    environment, and a definition made there would be gone by the next figure. The macro itself
+    is defined once (a second figure only replaces the list), and never over one the author
+    defined. Where ``cleveref`` is loaded, its own label is set too, so ``\cref`` prints
+    "fig. 7a" rather than dropping the letter.
+    """
+    if not letters:
+        return []
+    return [
+        "% Panel cross-references. After \\caption, call \\plotplatePanelLabels{<figure label>}%",
+        "% to define <figure label>a, <figure label>b, ...; the optional argument inserts a%",
+        "% separator: \\plotplatePanelLabels[:panel-]{fig7} defines fig7:panel-a.%",
+        "\\makeatletter%",
+        "\\gdef\\plotplate@panels{" + ",".join(letters) + "}%",
+        "\\@ifundefined{plotplatePanelLabels}{%",
+        "  \\gdef\\plotplatePanelLabels{%",
+        "    \\@ifnextchar[\\plotplate@panel@labels{\\plotplate@panel@labels[]}}%",
+        "  \\gdef\\plotplate@panel@labels[#1]#2{%",
+        "    \\@for\\plotplate@p:=\\plotplate@panels\\do{%",
+        "      \\begingroup%",
+        "        \\edef\\@currentlabel{\\thefigure\\plotplate@p}%",
+        "        \\@ifundefined{cref@currentlabel}{}{%",
+        "          \\protected@edef\\cref@currentlabel{%",
+        "            [figure][\\arabic{figure}][]\\thefigure\\plotplate@p}}%",
+        "        \\label{#2#1\\plotplate@p}%",
+        "      \\endgroup}}%",
+        "}{}%",
+        "\\makeatother%",
+    ]
 
 
 def write_figure_tex(
