@@ -362,6 +362,61 @@ To change the panel-letter font, define `\plotplatePanelLabel` in the preamble:
 
 File names never change, so a new upload replaces the previous panels.
 
+### Several figures in one manuscript
+
+Run `plotplate bundle` once per figure, into one folder per figure, and keep a `figures.tex` of your
+own that includes them:
+
+```text
+overleaf-project/
+  main.tex              % \input{figures.tex} where the figures belong
+  figures.tex           % yours: one block per figure, see below
+  figures/
+    figure_1/  figure_1.tex  figure_1.pdf  A.pdf  B.pdf  C.pdf
+    figure_2/  figure_2.tex  figure_2.pdf  A.pdf  B.pdf
+```
+
+```latex
+% figures.tex
+\begin{figure}[t]
+  \centering
+  \input{figures/figure_1/figure_1.tex}
+  \caption{...}\label{fig:figure_1}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/figure_2/figure_2.tex}
+  \caption{...}\label{fig:figure_2}
+\end{figure}
+```
+
+`figures.tex` and the captions are the manuscript's, not plotplate's: it never writes a `figure`
+environment, a caption or a label, because those belong to the text.
+`plotplate bundle` prints the block to paste, with the right paths already in it.
+
+### When a figure needs a last manual touch
+
+Every bundle also contains `<name>.pdf`: the same figure as **one file**, composed from the panels,
+letters included.
+It is there to look at and to send to a co-author — and for the case where a figure needs something no
+layout can express (an arrow across two panels, a hand-placed annotation).
+
+Open that PDF in Inkscape or Illustrator, finish it, save it next to the others, and change one line:
+
+```latex
+  % \input{figures/figure_1/figure_1.tex}        % the maintained version
+  \includegraphics{figures/figure_1/figure_1-final.pdf}   % the hand-finished one
+```
+
+No `width=` option: the file is already exactly `area.width × area.height`, so it prints at scale 1.0
+like the panels do, and nothing is scaled or cropped.
+Keep the commented `\input` line: it says where the figure came from, and swapping back is one
+character once the drawing is no longer needed.
+
+The hand-finished file is a manuscript artefact, so it belongs in the manuscript repository next to
+`figures.tex` — not in the figure folder, where the next `plotplate build` would be the authority.
+
 ## 5. Export the production file
 
 Most journals want one file per figure, with all panels (see [journal-specs.md](journal-specs.md)).

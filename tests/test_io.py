@@ -135,10 +135,17 @@ def test_cli_build_check_bundle(layout, tmp_path, capsys):
 
     _draw_all(layout)
     assert main(["check", str(layout.path)]) == 0
+    from plotplate.render import preview
+
+    preview(layout)  # the composed figure, which the bundle carries for looking at
     assert main(["bundle", str(layout.path), str(tmp_path / "overleaf")]) == 0
     tex = (tmp_path / "overleaf" / "t.tex").read_text()
     assert "figures/t/A.pdf" in tex
     assert (tmp_path / "overleaf" / "B.pdf").exists()
+    assert (tmp_path / "overleaf" / "t.pdf").exists()  # ... as one file, for a co-author
+    out = capsys.readouterr().out
+    assert "\\input{figures/t/t.tex}" in out  # the exact line to paste in the manuscript
+    assert "\\includegraphics{figures/t/t.pdf}" in out  # ... or this one, once hand-finished
     assert main(["resolve", str(layout.path), "-o", str(tmp_path / "resolved.yaml")]) == 0
     resolved = load_yaml(tmp_path / "resolved.yaml")
     assert "mosaic" not in resolved and resolved["panels"]["B"]["axes"]["main"]["box"]

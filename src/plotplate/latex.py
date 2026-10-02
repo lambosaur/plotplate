@@ -91,7 +91,14 @@ def write_figure_tex(
 
 
 def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = None) -> Path:
-    """Copy ``<name>.tex`` and the panel PDFs into ``out_dir`` for upload to Overleaf.
+    r"""Copy ``<name>.tex`` and the panel PDFs into ``out_dir`` for upload to Overleaf.
+
+    The composed figure (``preview.pdf``) is copied too, as ``<name>.pdf``, when it exists. It
+    is not what the manuscript includes -- ``\input{<name>.tex}`` places the panels, which is
+    what keeps them at scale 1.0 and the letters where the layout puts them -- but it is the
+    one file to look at, to send to a co-author, and to hand-finish in a drawing program when a
+    figure needs a last touch that no layout can express. Including that file instead is then
+    one line (see ``docs/workflow.md``).
 
     Args:
         layout: the figure layout.
@@ -111,6 +118,9 @@ def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = No
             missing.append(name)
     if missing:
         raise FileNotFoundError(f"Panels without PDF: {missing}; run their notebooks first")
+    composed = layout.base_dir / "preview.pdf"
+    if composed.exists():
+        shutil.copy2(composed, out_dir / f"{layout.name}.pdf")
     return write_figure_tex(layout, out_dir / f"{layout.name}.tex", graphics_prefix=prefix)
 
 

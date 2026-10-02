@@ -632,7 +632,18 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     layout = Layout.load(args.layout)
     status = cmd_check(args)
     out = bundle(layout, args.output_dir, graphics_prefix=args.prefix)
-    print(f"wrote {_rel(out.parent)} (upload its content to Overleaf)")
+    prefix = args.prefix if args.prefix is not None else f"figures/{layout.name}/"
+    print(f"wrote {_rel(out.parent)}: upload its content to {prefix} in the Overleaf project")
+    print("then, in the manuscript:\n")
+    print("  \\begin{figure}[t]\n    \\centering")
+    print(f"    \\input{{{prefix}{layout.name}.tex}}")
+    print(f"    \\caption{{...}}\n    \\label{{fig:{layout.name}}}\n  \\end{{figure}}")
+    if (out.parent / f"{layout.name}.pdf").exists():
+        print(
+            f"\n{layout.name}.pdf is the same figure as one file, for looking at and for "
+            "hand-finishing;\nto include that instead of the panels, replace the \\input line with"
+        )
+        print(f"  \\includegraphics{{{prefix}{layout.name}.pdf}}")
     return status
 
 
