@@ -154,7 +154,7 @@ def test_cli_build_check_bundle(layout, tmp_path, capsys):
     assert "figures/t/A.pdf" in tex
     assert (tmp_path / "overleaf" / "B.pdf").exists()
     assert (tmp_path / "overleaf" / "t.pdf").exists()  # ... as one file, for a co-author
-    assert "\\gdef\\plotplatePanelLabels" in tex  # the bundle can reference panels too
+    assert "makeatletter" not in tex  # the bundled file stays the simplest thing that works
     out = capsys.readouterr().out
     assert "\\input{figures/t/t.tex}" in out  # the exact line to paste in the manuscript
     assert "\\includegraphics{figures/t/t.pdf}" in out  # ... or this one, once hand-finished
@@ -340,27 +340,35 @@ def test_the_label_format_reaches_the_preview_too(layout, tmp_path):
     assert ">a)<" in svg
 
 
-def test_panel_reference_macros_are_written(layout):
-    """The .tex carries the letters it stamped, so the manuscript can reference one panel."""
+def test_the_default_tex_defines_nothing_but_the_letter_font(layout):
+    """The file is meant to be read in Overleaf: a picture, the images, the letters. Nothing else."""
     tex = figure_tex(layout)
+    assert "\\makeatletter" not in tex and "\\gdef" not in tex and "@" not in tex
+    defined = [line for line in tex.splitlines() if "\\providecommand" in line or "\\def" in line]
+    assert len(defined) == 1 and "plotplatePanelLabel" in defined[0]  # the letter font, overridable
+
+
+def test_panel_reference_macros_are_opt_in(layout):
+    """`--panel-refs` adds the block that lets the manuscript reference one panel."""
+    tex = figure_tex(layout, panel_refs=True)
     assert "\\gdef\\plotplate@panels{a,b}" in tex  # the stamped letters, in the preset's case
     assert "\\gdef\\plotplatePanelLabels" in tex
-    assert "\\plotplate@panels" not in figure_tex(layout, labels=False)  # no letters, no labels
+    assert "\\plotplate@panels" not in figure_tex(layout, labels=False, panel_refs=True)
 
     upper = pp.Layout({**layout.raw, "style": {"panel_label": {"case": "upper"}}}, layout.path)
-    assert "\\gdef\\plotplate@panels{A,B}" in figure_tex(upper)  # Science and Cell letter that way
+    assert "\\gdef\\plotplate@panels{A,B}" in figure_tex(upper, panel_refs=True)
     formatted = pp.Layout(
         {**layout.raw, "style": {"panel_label": {"format": "({letter})"}}}, layout.path
     )
     # the reference is "7a", never "7(a)": the format is for the stamp, not for the label
-    assert "\\gdef\\plotplate@panels{a,b}" in figure_tex(formatted)
+    assert "\\gdef\\plotplate@panels{a,b}" in figure_tex(formatted, panel_refs=True)
 
 
 @pytest.mark.skipif(_tectonic() is None, reason="tectonic not installed")
 def test_panel_references_resolve_in_a_real_document(layout, tmp_path):
     """Two figures in one document: \\ref prints <figure number><letter>, and cleveref agrees."""
     _draw_all(layout)
-    body = figure_tex(layout, graphics_prefix=f"{layout.panels_dir}/")
+    body = figure_tex(layout, graphics_prefix=f"{layout.panels_dir}/", panel_refs=True)
 
     def block(caption: str, label: str) -> str:
         return (

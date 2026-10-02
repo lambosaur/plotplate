@@ -13,9 +13,10 @@ Usage in the manuscript::
       \caption{...}
     \end{figure}
 
-The file also defines ``\plotplatePanelLabels``: called after ``\caption``, it turns the figure's
-letters into labels (``\ref{fig:7a}`` prints ``7a``), which is what replaces ``subfigure``'s
-sub-captions for cross-referencing.
+``--panel-refs`` adds one optional block, for manuscripts that reference a single panel: it
+defines ``\plotplatePanelLabels``, which turns the figure's letters into labels
+(``\ref{fig:7a}`` prints ``7a``) and replaces ``subfigure``'s sub-captions. It is off by
+default, because it is a page of ``\makeatletter`` in a file whose point is to be obvious.
 
 Panel letters use ``\plotplatePanelLabel``, defined with ``\providecommand`` from the layout's
 ``panel_label`` style (size, weight, and ``latex_font`` for the font commands): define your own
@@ -39,8 +40,20 @@ def _fmt(value: float) -> str:
     return f"{value:.2f}"
 
 
-def figure_tex(layout: Layout, graphics_prefix: str = "panels/", labels: bool = True) -> str:
-    """LaTeX source of the figure body (no ``figure`` environment, no caption)."""
+def figure_tex(
+    layout: Layout,
+    graphics_prefix: str = "panels/",
+    labels: bool = True,
+    panel_refs: bool = False,
+) -> str:
+    r"""LaTeX source of the figure body (no ``figure`` environment, no caption).
+
+    What comes out is meant to be read by whoever opens it in Overleaf: a picture box of the
+    figure's size, one ``\includegraphics`` per panel, one ``\makebox`` per letter. The only
+    definition is ``\plotplatePanelLabel``, which sets the letters' font and can be redefined in
+    the preamble. ``panel_refs`` adds the machinery for referencing a single panel, which is a
+    page of ``\makeatletter`` and is therefore left out unless it is asked for.
+    """
     label = layout.style["panel_label"]
     weight = r"\bfseries" if label["weight"] == "bold" else ""
     size = float(label["size"])
@@ -79,7 +92,7 @@ def figure_tex(layout: Layout, graphics_prefix: str = "panels/", labels: bool = 
                 f"{{\\makebox(0,0)[lt]{{\\plotplatePanelLabel{{{text}}}}}}}%"
             )
     lines.append("\\end{picture}}%")
-    if labels:
+    if labels and panel_refs:
         letters = [spec.label for spec in layout.panels.values() if spec.label]
         lines += _panel_reference_macros(letters)
     lines.append("")
@@ -133,14 +146,20 @@ def write_figure_tex(
     out: str | Path | None = None,
     graphics_prefix: str = "panels/",
     labels: bool = True,
+    panel_refs: bool = False,
 ) -> Path:
     """Write the snippet to ``out`` (default ``<layout dir>/<name>.tex``)."""
     target = Path(out) if out is not None else layout.base_dir / f"{layout.name}.tex"
-    target.write_text(figure_tex(layout, graphics_prefix, labels), encoding="utf-8")
+    target.write_text(figure_tex(layout, graphics_prefix, labels, panel_refs), encoding="utf-8")
     return target
 
 
-def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = None) -> Path:
+def bundle(
+    layout: Layout,
+    out_dir: str | Path,
+    graphics_prefix: str | None = None,
+    panel_refs: bool = False,
+) -> Path:
     r"""Copy ``<name>.tex`` and the panel PDFs into ``out_dir`` for upload to Overleaf.
 
     The composed figure (``preview.pdf``) is copied too, as ``<name>.pdf``, when it exists. It
@@ -155,6 +174,7 @@ def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = No
         out_dir: destination folder (created). Upload its content as-is.
         graphics_prefix: path of the panels as seen from the Overleaf project root,
             default ``figures/<name>/``, matching an upload of ``out_dir`` there.
+        panel_refs: also write the optional block that lets the manuscript reference one panel.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -171,7 +191,9 @@ def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = No
     composed = layout.base_dir / "preview.pdf"
     if composed.exists():
         shutil.copy2(composed, out_dir / f"{layout.name}.pdf")
-    return write_figure_tex(layout, out_dir / f"{layout.name}.tex", graphics_prefix=prefix)
+    return write_figure_tex(
+        layout, out_dir / f"{layout.name}.tex", graphics_prefix=prefix, panel_refs=panel_refs
+    )
 
 
 def standalone_document(layout: Layout, graphics_prefix: str = "panels/", labels: bool = True) -> str:

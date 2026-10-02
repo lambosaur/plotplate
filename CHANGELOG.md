@@ -8,9 +8,12 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
 
 ### Added
 
-- Panel cross-references in the generated LaTeX: the `.tex` lists the letters it stamped and defines
+- `plotplate latex --panel-refs` / `plotplate bundle --panel-refs`, for a manuscript that references a
+  single panel: the `.tex` then also lists the letters it stamped and defines
   `\plotplatePanelLabels{<figure label>}`, called after `\caption`, so that `\ref{fig:7a}` prints `7a`
   and links to the figure.
+  Off by default — without it the file stays what it was: a picture box, one `\includegraphics` per
+  panel, one letter each, and no other definition.
   An optional argument covers other naming conventions (`\plotplatePanelLabels[:panel-]{fig7}` gives
   `fig7:panel-a`), and `cleveref` keeps the letter (`\cref` prints "fig. 7a").
   Verified by compiling a document with two figures, `hyperref` and `cleveref`.
