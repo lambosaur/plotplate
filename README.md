@@ -38,8 +38,6 @@ uv tool install "plotplate @ git+https://github.com/lambosaur/plotplate"
 ```
 
 All three work the same on Linux and macOS, and nothing is cloned into your projects.
-The repository is private, so these need an account with access to it (`gh auth login`, or an SSH key,
-depending on the URL form).
 The tool needs nothing beyond its own dependencies (matplotlib, numpy, pyyaml, pymupdf).
 
 ### 2. The library, in the environment that draws your figures
@@ -254,3 +252,7 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 ## Contributing
 
 Development uses Pixi; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

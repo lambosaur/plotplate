@@ -137,19 +137,6 @@ decision.
   assembled figure is exactly the size the layout says.
   `subfigure` would add a line under each panel and shrink the panels to compensate.
 
-## Integration with project-meta
-
-Planned order, as agreed:
-
-1. This package, proven on the synthetic demo (done), then on one real PARNET figure (start with
-   `plotplate from-pdf` on the Overleaf PDF).
-1. A Copier question in project-meta, for example
-   `has_figures`, which generates `figures/style.yaml`, a `figures/_template/` folder (layout, one
-   panel notebook, README), the pixi dependency, the skills, and a `build-figures` task.
-1. The same template applied to `parnet--paper`.
-
-Nothing in project-meta or PARNET has been changed so far.
-
 ## Open questions
 
 - The name: `plotplate` / `plotplate` was a placeholder.
