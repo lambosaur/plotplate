@@ -356,17 +356,37 @@ def test_the_default_tex_defines_nothing_but_the_letter_font(layout):
 def test_panel_reference_macros_are_opt_in(layout):
     """`--panel-refs` adds the block that lets the manuscript reference one panel."""
     tex = figure_tex(layout, panel_refs=True)
-    assert "\\gdef\\plotplate@panels{a,b}" in tex  # the stamped letters, in the preset's case
+    assert "\\plotplate@label{#1a}{a}" in tex  # the stamped letters, in the preset's case
     assert "\\gdef\\plotplatePanelLabels" in tex
-    assert "\\plotplate@panels" not in figure_tex(layout, labels=False, panel_refs=True)
+    assert "\\plotplatePanelLabels" not in figure_tex(layout, labels=False, panel_refs=True)
 
     upper = pp.Layout({**layout.raw, "style": {"panel_label": {"case": "upper"}}}, layout.path)
-    assert "\\gdef\\plotplate@panels{A,B}" in figure_tex(upper, panel_refs=True)
+    assert "\\plotplate@label{#1A}{A}" in figure_tex(upper, panel_refs=True)
     formatted = pp.Layout(
         {**layout.raw, "style": {"panel_label": {"format": "({letter})"}}}, layout.path
     )
     # the reference is "7a", never "7(a)": the format is for the stamp, not for the label
-    assert "\\gdef\\plotplate@panels{a,b}" in figure_tex(formatted, panel_refs=True)
+    assert "\\plotplate@label{#1a}{a}" in figure_tex(formatted, panel_refs=True)
+
+
+def test_a_panel_can_also_be_referenced_by_its_name(tmp_path):
+    """A name that is not a letter gets its own label, which survives a re-lettering."""
+    data = {
+        "schema": 1,
+        "name": "fig7",
+        "labels": "auto",
+        "area": {"width": 183, "height": 120},
+        "panels": {
+            "roc_auc": {"box": [0, 0, 89, 60]},
+            "rbp_heatmap": {"box": [94, 0, 89, 60]},
+        },
+    }
+    pp.config.dump_yaml(data, tmp_path / "layout.yaml")
+    tex = figure_tex(pp.Layout.load(tmp_path / "layout.yaml"), panel_refs=True)
+    assert "\\plotplate@label{#1A}{A}" in tex  # \\ref{fig:7A} (upper case by default)
+    assert "\\plotplate@label{#1-roc_auc}{A}" in tex  # ... or \\ref{fig:7-roc_auc}
+    assert "\\plotplate@label{#1-rbp_heatmap}{B}" in tex
+    assert "% panel roc_auc (A)" in tex  # the file says which panel carries which letter
 
 
 @pytest.mark.skipif(_tectonic() is None, reason="tectonic not installed")

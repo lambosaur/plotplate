@@ -435,6 +435,21 @@ to hand to a co-author.
   \plotplatePanelLabels{fig:figure_1}      % defines fig:figure_1a, fig:figure_1b, ...
 ```
 
+The argument is a plain prefix, so an existing convention costs nothing:
+`\plotplatePanelLabels{fig7:panel_}` defines `fig7:panel_a`, `fig7:panel_b`, …
+
+A panel whose **name** is not its letter also gets a label of its own, `<prefix>-<name>`, pointing at
+the same place:
+
+```latex
+See Figure~\ref{fig:figure_1a}            % by letter: what readers see, and what you will remember
+See Figure~\ref{fig:figure_1-roc_auc}     % by name: survives a renumbering of the letters
+```
+
+Both print `7a`.
+The letter is positional, so it changes when panels are reordered and *renumber* is used; the name
+does not, which is why it is worth having in a draft that still moves.
+
 `\ref{fig:figure_1a}` then prints `7a` and links to the figure.
 The call must come **after `\caption`**, which is when the figure's number is final, and inside the
 same `figure` environment.

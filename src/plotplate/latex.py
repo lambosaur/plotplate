@@ -78,9 +78,12 @@ def figure_tex(
     for name, spec in layout.panels.items():
         path = PurePosixPath(graphics_prefix) / f"{name}.pdf" if graphics_prefix else f"{name}.pdf"
         # picture coordinates: origin bottom-left; an image's reference point is its bottom-left.
+        said = (
+            name if not spec.label or spec.label.lower() == name.lower() else f"{name} ({spec.label})"
+        )
         lines.append(
             f"\\put({_fmt(spec.box.x)},{_fmt(layout.height - spec.box.bottom)})"
-            f"{{\\includegraphics{{{path}}}}}% panel {name}"
+            f"{{\\includegraphics{{{path}}}}}% panel {said}"
         )
     if labels:
         for spec in layout.panels.values():
@@ -95,52 +98,54 @@ def figure_tex(
             )
     lines.append("\\end{picture}}%")
     if labels and panel_refs:
-        letters = [spec.label for spec in layout.panels.values() if spec.label]
-        lines += _panel_reference_macros(letters)
+        named = [(name, spec.label) for name, spec in layout.panels.items() if spec.label]
+        lines += _panel_reference_macros(named)
     lines.append("")
     return "\n".join(lines)
 
 
-def _panel_reference_macros(letters: list[str]) -> list[str]:
+def _panel_reference_macros(panels: list[tuple[str, str]]) -> list[str]:
     r"""LaTeX that lets the manuscript reference one panel: ``\ref{fig:7a}`` prints ``7a``.
 
-    The figure's number is only final after ``\caption``, so the labels cannot be written here;
-    what is written is the list of letters and one macro that turns it into labels, which the
-    author calls after the caption::
+    The figure's number is only final after ``\caption``, so the labels cannot be written here.
+    What is written is one macro per figure that defines them, which the author calls after the
+    caption::
 
         \caption{...}\label{fig:7}
-        \plotplatePanelLabels{fig:7}        % defines fig:7a, fig:7b, ...
-        \plotplatePanelLabels[:panel-]{fig7} % ... or fig7:panel-a, for other conventions
+        \plotplatePanelLabels{fig:7}       % defines fig:7a, fig:7b, ...
+        \plotplatePanelLabels{fig7:panel_} % ... or fig7:panel_a, for another convention
+
+    The argument is a plain prefix, so any naming convention is a matter of what is passed. A
+    panel whose name differs from its letter also gets ``<prefix>-<name>`` (``fig:7-roc_auc``),
+    which keeps pointing at the same panel when the letters are handed out again.
 
     Everything is defined globally with ``\gdef``: the file is ``\input`` inside a ``figure``
-    environment, and a definition made there would be gone by the next figure. The macro itself
-    is defined once (a second figure only replaces the list), and never over one the author
-    defined. Where ``cleveref`` is loaded, its own label is set too, so ``\cref`` prints
-    "fig. 7a" rather than dropping the letter.
+    environment, where a local definition would be gone by the next figure. Where ``cleveref``
+    is loaded, its own label is set too, so ``\cref`` prints "fig. 7a" rather than dropping the
+    letter.
     """
-    if not letters:
+    if not panels:
         return []
-    return [
-        "% Panel cross-references. After \\caption, call \\plotplatePanelLabels{<figure label>}%",
-        "% to define <figure label>a, <figure label>b, ...; the optional argument inserts a%",
-        "% separator: \\plotplatePanelLabels[:panel-]{fig7} defines fig7:panel-a.%",
+    lines = [
+        "% Panel cross-references (--panel-refs). After \\caption, call%",
+        "% \\plotplatePanelLabels{<prefix>} to define <prefix>a, <prefix>b, ...%",
         "\\makeatletter%",
-        "\\gdef\\plotplate@panels{" + ",".join(letters) + "}%",
-        "\\@ifundefined{plotplatePanelLabels}{%",
-        "  \\gdef\\plotplatePanelLabels{%",
-        "    \\@ifnextchar[\\plotplate@panel@labels{\\plotplate@panel@labels[]}}%",
-        "  \\gdef\\plotplate@panel@labels[#1]#2{%",
-        "    \\@for\\plotplate@p:=\\plotplate@panels\\do{%",
-        "      \\begingroup%",
-        "        \\edef\\@currentlabel{\\thefigure\\plotplate@p}%",
-        "        \\@ifundefined{cref@currentlabel}{}{%",
-        "          \\protected@edef\\cref@currentlabel{%",
-        "            [figure][\\arabic{figure}][]\\thefigure\\plotplate@p}}%",
-        "        \\label{#2#1\\plotplate@p}%",
-        "      \\endgroup}}%",
-        "}{}%",
-        "\\makeatother%",
+        "\\@ifundefined{plotplate@label}{%",
+        "  \\gdef\\plotplate@label#1#2{%",
+        "    \\begingroup%",
+        "      \\edef\\@currentlabel{\\thefigure#2}%",
+        "      \\@ifundefined{cref@currentlabel}{}{%",
+        "        \\protected@edef\\cref@currentlabel{[figure][\\arabic{figure}][]\\thefigure#2}}%",
+        "      \\label{#1}%",
+        "    \\endgroup}}{}%",
+        "\\gdef\\plotplatePanelLabels#1{%",
     ]
+    for name, letter in panels:
+        lines.append(f"  \\plotplate@label{{#1{letter}}}{{{letter}}}%")
+        if name.lower() != letter.lower():
+            lines.append(f"  \\plotplate@label{{#1-{name}}}{{{letter}}}% panel {name}")
+    lines += ["  }%", "\\makeatother%"]
+    return lines
 
 
 def write_figure_tex(

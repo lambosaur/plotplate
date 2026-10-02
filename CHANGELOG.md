@@ -10,8 +10,10 @@ change, and when it does, `schema:` is bumped and the old form keeps loading.
 
 - `plotplate latex --panel-refs` / `plotplate bundle --panel-refs`, for a manuscript that references a
   single panel: the `.tex` then also lists the letters it stamped and defines
-  `\plotplatePanelLabels{<figure label>}`, called after `\caption`, so that `\ref{fig:7a}` prints `7a`
-  and links to the figure.
+  `\plotplatePanelLabels{<prefix>}`, called after `\caption`, so that `\ref{fig:7a}` prints `7a` and
+  links to the figure.
+  The prefix is plain text, so `\plotplatePanelLabels{fig7:panel_}` serves an existing convention, and
+  a panel whose name is not its letter also gets `<prefix>-<name>`, which survives a renumbering.
   Off by default — without it the file stays what it was: a picture box, one `\includegraphics` per
   panel, one letter each, and no other definition.
   An optional argument covers other naming conventions (`\plotplatePanelLabels[:panel-]{fig7}` gives
