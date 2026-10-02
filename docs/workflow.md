@@ -350,6 +350,16 @@ plotplate bundle layout.yaml build/overleaf/figure_1
 \input{figures/figure_1/figure_1-figure.tex}
 ```
 
+Either line does it, and both print exactly the same figure at exactly the same size:
+
+| | the line in the manuscript | what it gives |
+| --- | --- | --- |
+| the figure as one file | `\includegraphics{figures/figure_1/figure_1.pdf}` | simplest; the letters are already in the PDF, drawn by plotplate |
+| the panels kept apart (default) | `\input{figures/figure_1/figure_1-figure.tex}` | each panel stays its own vector file, and LaTeX draws the letters in the document's font |
+
+Neither takes a `width=` option, and that is the point: the panels were drawn at their final size, so
+anything that rescales them would change the size of their text.
+
 ### Two files, and only one of them is generated
 
 | file | who owns it | what is in it |
