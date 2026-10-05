@@ -4,6 +4,24 @@ Notable changes per release.
 Versions follow [semantic versioning](https://semver.org); before 1.0 the layout file format may still
 change, and when it does, `schema:` is bumped and the old form keeps loading.
 
+## 0.2.1 — 2026-10-05
+
+### Fixed
+
+- `<name>-figure.tex` included `panels/<name>.tex`, where no such file is written: the panels file
+  sits next to the layout. The copy written beside the layout includes `<name>.tex`, the copy
+  `plotplate bundle` writes keeps the path the manuscript needs, and a comment says the path is
+  relative to whatever LaTeX compiles.
+- `plotplate export` reported a missing or wrongly sized panel as a *warning* while refusing to write
+  the file. It is an error, says so, and points at the new flag.
+
+### Added
+
+- `plotplate preview --page-outlines`: the panel boxes are drawn on the page view only, so the figure
+  itself stays clean. `--outlines` is unchanged and applies to the figure.
+- `plotplate export --allow-missing`: write a draft with empty boxes where panels are missing, for
+  showing work in progress. Each hole is reported as a warning; the default still refuses.
+
 ## 0.2.0 — 2026-10-02
 
 The LaTeX output, reworked after using it on a real manuscript: two files instead of one, and nothing
