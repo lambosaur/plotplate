@@ -28,6 +28,10 @@ Three breaking changes, all about *where* files go; nothing about how a figure i
 
 ### Added
 
+- [docs/latex.md](docs/latex.md): everything about the manuscript side in one place — the two files,
+  what is in them, referencing a panel, the SVG question — instead of a quarter of `workflow.md`.
+  The README now opens with the whole tool on one screen, and its documentation index is a table of
+  questions rather than a list of files.
 - `output_dir:` in the layout: one folder for everything a build writes — `panels/`, the composed
   figure, the page view, the panels' `.tex`, the wireframe.
   The layout files and `<name>-figure.tex` stay beside the layout, because they are sources.

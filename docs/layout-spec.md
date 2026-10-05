@@ -147,7 +147,7 @@ panel letters are drawn by LaTeX.
 
 Panel letters are **never drawn inside a panel file**.
 They are stamped on the assembled figure — by the generated LaTeX, and identically by
-`plotplate preview` / `export` — at the millimetre the layout gives:
+`plotplate preview` / `export` — at the millimetre the layout gives ([latex.md](latex.md)):
 
 ```latex
 \put(0.00,150.00){\makebox(0,0)[lt]{{\fontsize{8pt}{8pt}\selectfont\sffamily\bfseries a}}}%

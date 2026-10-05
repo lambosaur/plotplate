@@ -22,7 +22,8 @@ The layout decides size and alignment; the notebook decides content.
   If a size must be set, use `layout.style["font"][...]`.
 - Colors of shared entities come from `panel.colors` (project `style.yaml`), not literals.
 - Save only with `panel.save(fig, source="<notebook file>")`.
-  It writes `panels/<X>.{pdf,svg,png}` and `panels/<X>.json` with the check results.
+  It writes `panels/<X>.{pdf,svg,png}` and `panels/<X>.json` with the check results, inside the
+  layout's `output_dir` when it sets one (otherwise beside the layout).
 - Data comes from precomputed tables in `data/`; keep computation out of panel notebooks except light
   reshaping.
 

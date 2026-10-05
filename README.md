@@ -18,6 +18,29 @@ This tool reverses the order:
 1. The panels are assembled at scale 1.0, so every font prints at its true size, and the checks can
    prove it.
 
+## The whole thing
+
+A figure is a folder.
+You write the layout and one script per panel; plotplate writes the rest.
+
+```text
+figures/figure_1/
+  layout.yaml          # you: the sheet, the figure's size, one box per panel
+  panel_A_roc.py       # you: one script per panel, drawing into its box
+  figure_1-figure.tex  # you: the caption, written once, never overwritten
+  output/              # plotplate: panels/, figure.pdf, page.pdf, figure_1.tex
+```
+
+```sh
+plotplate build figures/figure_1     # run the panel scripts, compose, check
+plotplate view figures/figure_1      # look at it on its sheet, in a browser
+plotplate bundle figures/figure_1 build/overleaf/figure_1   # hand it to the manuscript
+```
+
+That is the tool.
+Everything below is detail: where a layout can come from (an old PDF, a drawing, a mosaic string), how
+a panel script fits its box, and what each journal wants.
+
 ## Install
 
 Three independent steps; do the ones you need.
@@ -218,25 +241,23 @@ Page margins and captions belong to the manuscript; `--page a4` shows the figure
 
 ## Documentation
 
-- [docs/workflow.md](docs/workflow.md): the complete workflow, with every option.
-- [docs/layout-sources.md](docs/layout-sources.md): what a PDF, screenshot or drawing must contain.
-- [docs/panel-recipes.md](docs/panel-recipes.md): panel code recipes, dos and don'ts, complex
-  compositions.
-- [docs/alignment.md](docs/alignment.md): guides, measured geometry, alignment rules.
-- Revising a figure later: [workflow.md](docs/workflow.md#changing-the-layout-later) and the
-  `figure-layout-revision` skill.
-- [docs/coordinates.md](docs/coordinates.md): page, area, panel, axes, guides and gutters — one
-  picture of every term, and the conversions between the coordinate systems.
-- [docs/layout-spec.md](docs/layout-spec.md): the `layout.yaml` reference.
-- [docs/constraints.md](docs/constraints.md): panel boxes solved from relations instead of typed
-  numbers.
-- [docs/optimize.md](docs/optimize.md): spending the white space of a drafted layout, and the
-  distortion limit that decides how far it may go.
-- [docs/journal-specs.md](docs/journal-specs.md): figure requirements of Nature, Science, Cell, NAR,
-  Genome Biology, Genome Research and PLOS, with sources.
-- [docs/related-tools.md](docs/related-tools.md): every tool considered — styling, composition, figure
-  segmentation, plot digitisation — what is used here and why the rest is not.
-- [docs/design-notes.md](docs/design-notes.md): decisions, limitations, open questions.
+**Start here** — [docs/workflow.md](docs/workflow.md): one figure from nothing to a manuscript.
+
+When you need it:
+
+| question | file |
+| --- | --- |
+| What goes in `layout.yaml`? | [layout-spec.md](docs/layout-spec.md) |
+| What do page, area, panel, axes, guide, gutter mean? | [coordinates.md](docs/coordinates.md) — one picture of all of it |
+| How do I write the panel code? | [panel-recipes.md](docs/panel-recipes.md) |
+| What does plotplate give LaTeX, and what do I write? | [latex.md](docs/latex.md) |
+| My figure came from an old PDF / screenshot / Inkscape | [layout-sources.md](docs/layout-sources.md) |
+| The boxes waste space | [optimize.md](docs/optimize.md) |
+| Axes across panels must line up | [alignment.md](docs/alignment.md) |
+| Let the boxes follow relations instead of numbers | [constraints.md](docs/constraints.md) |
+| What does this journal require? | [journal-specs.md](docs/journal-specs.md) |
+| Why not use <some other tool>? | [related-tools.md](docs/related-tools.md) |
+| Why is it built this way? | [design-notes.md](docs/design-notes.md) |
 
 ## Commands
 

@@ -78,3 +78,47 @@ def test_skills_install_into_a_project(tmp_path, capsys):
     assert (tmp_path / ".claude" / "skills" / "figure-review" / "SKILL.md").read_text()
     assert main(["skills", "--dest", str(tmp_path / ".claude" / "skills")]) == 0
     assert "skip" in capsys.readouterr().out  # a second run does not overwrite
+
+
+def _skill_commands() -> list[tuple[str, str, list[str]]]:
+    """Every full `plotplate …` command line the skills tell an agent to run."""
+    import re
+    import shlex
+
+    found = []
+    for skill in sorted((SRC / "skills").glob("*/SKILL.md")):
+        for match in re.finditer(r"`(plotplate [^`]+)`", skill.read_text(encoding="utf-8")):
+            spelled = match.group(1)
+            # placeholders stand for a value: a number works for every option that takes one
+            argv = shlex.split(re.sub(r"<[^>]+>", "1", spelled).replace("…", "1"))[1:]
+            if len(argv) >= 2:  # shorter ones are mentions in prose, not instructions
+                found.append((skill.parent.name, spelled, argv))
+    return found
+
+
+def test_the_skills_only_name_flags_that_exist():
+    """A renamed flag must not be discovered by an agent in the middle of someone's figure.
+
+    Only the failures that mean "this cannot work" count: a skill may name a command without its
+    arguments while explaining it ("`plotplate optimize --gap 4` spends the white space"), and
+    argparse then complains about missing positionals, which is prose, not a mistake.
+    """
+    import contextlib
+    import io
+
+    from plotplate.cli import build_parser
+
+    parser = build_parser()
+    broken = []
+    for skill, spelled, argv in _skill_commands():
+        said = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(said):
+                parser.parse_args(argv)
+        except SystemExit as exc:
+            message = said.getvalue()
+            # a flag quoted without its value is prose too ("`--width` rescales the draft")
+            fatal = ("unrecognized arguments", "invalid choice")
+            if exc.code and any(reason in message for reason in fatal):
+                broken.append(f"{skill}: {spelled}\n    {message.strip().splitlines()[-1]}")
+    assert not broken, "commands the CLI would reject:\n  " + "\n  ".join(broken)
