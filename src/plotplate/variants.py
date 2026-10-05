@@ -51,6 +51,10 @@ def find_layouts(target: str | Path) -> dict[str, Path]:
     ``target`` is a layout file or the folder holding it. Only files whose name starts like
     the given one (``layout``, by default) count, so ``alignment.yaml`` or ``style.yaml``
     next to them are not mistaken for layouts.
+
+    A ``layout.yaml`` that is a symlink to one of the variants beside it is not a layout of
+    its own: it is the choice of which variant is in use (see :func:`selected`), so it is left
+    out and the variant it points at is listed once, under its own name.
     """
     target = Path(target)
     folder = target if target.is_dir() else target.parent
@@ -61,26 +65,49 @@ def find_layouts(target: str | Path) -> dict[str, Path]:
             continue
         if entry.name.split(".")[0] != base:
             continue
+        if entry.is_symlink() and entry.resolve().parent == folder.resolve():
+            continue  # a link to a sibling variant: the variant itself is listed below
         found[variant_of(entry)] = entry
     return dict(sorted(found.items(), key=lambda kv: (kv[0] != BASE, kv[0])))
+
+
+def selected(target: str | Path) -> str | None:
+    """The variant ``layout.yaml`` points at, when it is a symlink to one of its siblings.
+
+    A figure folder can keep several layouts and choose between them with a link; this says
+    which one is chosen, so a viewer can mark it instead of showing the link as a layout of its
+    own. ``None`` when there is no link (``layout.yaml`` is then its own variant, ``base``).
+    """
+    target = Path(target)
+    folder = target if target.is_dir() else target.parent
+    base = "layout" if target.is_dir() else Path(target.name).name.split(".")[0]
+    for suffix in SUFFIXES:
+        link = folder / f"{base}{suffix}"
+        if link.is_symlink():
+            return variant_of(link.resolve())
+    return BASE if any((folder / f"{base}{s}").exists() for s in SUFFIXES) else None
 
 
 def resolve_layout_path(target: str | Path) -> Path:
     """The layout file to use when a command is given a path that may be a folder.
 
-    A folder resolves to its ``layout.yaml``, or to the only layout variant in it when there
-    is no base file. Anything else is returned unchanged, so an explicit file always wins.
+    A folder resolves to its ``layout.yaml`` -- a file, or a symlink to the variant the folder
+    has selected -- or to the only variant in it when there is none. Anything else is returned
+    unchanged, so an explicit file always wins.
     """
     path = Path(target)
     if not path.is_dir():
         return path
+    for suffix in SUFFIXES:
+        candidate = path / f"layout{suffix}"
+        if candidate.exists():  # a layout of its own, or a link to the selected one
+            return candidate
     found = find_layouts(path)
-    if BASE in found:
-        return found[BASE]
     if len(found) == 1:
         return next(iter(found.values()))
     if not found:
         raise FileNotFoundError(f"{path}: no layout.yaml (nor a layout.<variant>.yaml) in it")
     raise FileNotFoundError(
-        f"{path}: no layout.yaml, and several variants ({', '.join(found)}); name the file"
+        f"{path}: no layout.yaml, and several variants ({', '.join(found)}); "
+        "name the file, or link layout.yaml to the one to use"
     )

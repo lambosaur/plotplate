@@ -130,7 +130,7 @@ def test_latex_matches_preview(layout, tmp_path):
     doc.write_text(standalone_document(layout, graphics_prefix=f"{layout.panels_dir}/", labels=False))
     try:
         subprocess.run(
-            [_tectonic(), doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
+            [str(_tectonic()), doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
         )
     except subprocess.CalledProcessError as exc:  # e.g. offline, bundle not cached
         pytest.skip(f"tectonic failed: {exc.stderr[-300:]!r}")
@@ -214,7 +214,7 @@ def test_demo_copy_and_build(tmp_path):
     assert set(find_layouts(figure)) == {"base", "detected", "optimized"}
     assert load_yaml(figure / "layout.optimized.yaml")["area"] == {"width": 183.0, "height": 168.0}
     assert (figure / "export" / "Figure1.pdf").exists()
-    assert (figure / "preview-page.png").exists()
+    assert (figure / "page.png").exists()
 
 
 def test_svg_import_illustrator_style_ids(tmp_path):
@@ -382,7 +382,7 @@ def test_the_panel_reference_recipe_compiles(layout, tmp_path):
     )
     try:
         subprocess.run(
-            [_tectonic(), doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
+            [str(_tectonic()), doc.name], cwd=tmp_path, check=True, capture_output=True, timeout=300
         )
     except subprocess.CalledProcessError as exc:  # e.g. offline, bundle not cached
         pytest.skip(f"tectonic failed: {exc.stderr[-300:]!r}")
@@ -425,7 +425,7 @@ def test_the_figure_file_includes_the_panels_file_beside_it(layout, tmp_path):
 
 
 def test_outlines_stay_out_of_the_figure_when_only_the_page_view_wants_them(layout, tmp_path):
-    """`--page-outlines` annotates the page view; preview.png stays the figure itself."""
+    """`--page-outlines` annotates the page view; figure.png stays the figure itself."""
     import pymupdf
 
     from plotplate.cli import main
@@ -444,11 +444,11 @@ def test_outlines_stay_out_of_the_figure_when_only_the_page_view_wants_them(layo
     assert boxed > bare  # outlines are visible in a count
 
     assert main(["preview", str(layout.path), "--page", "a4", "--page-outlines"]) == 0
-    assert drawings(layout.base_dir / "preview.pdf") == bare  # the figure is untouched
-    assert drawings(layout.base_dir / "preview-page.pdf") > bare  # the page view has the boxes
+    assert drawings(layout.output_dir / "figure.pdf") == bare  # the figure is untouched
+    assert drawings(layout.output_dir / "page.pdf") > bare  # the page view has the boxes
 
     assert main(["preview", str(layout.path), "--outlines"]) == 0  # --outlines still does
-    assert drawings(layout.base_dir / "preview.pdf") == boxed
+    assert drawings(layout.output_dir / "figure.pdf") == boxed
 
 
 def test_export_refuses_a_hole_but_can_draw_a_draft(layout, tmp_path, capsys):

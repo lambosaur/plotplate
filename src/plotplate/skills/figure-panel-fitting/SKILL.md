@@ -35,7 +35,7 @@ For spans or nested grids inside a region, use
 
 1. Run the notebook (or `plotplate build layout.yaml A` from the figure folder).
 1. Read the report printed by `save` (also in `panels/A.json`).
-1. Read `panels/A.png` with the Read tool to look at the result; `preview.png` to see it next to other
+1. Read `panels/A.png` with the Read tool to look at the result; `figure.png` to see it next to other
    panels.
 1. Fix and repeat until the report has no errors, and warnings are either fixed or explained to the
    user.

@@ -35,13 +35,23 @@ The layout, the tables, the panel notebooks and the outputs live together.
 
 The demo (`plotplate demo figure --dir <folder>`) follows this structure.
 
+### Where the files go
+
+```yaml
+output_dir: output     # in the layout; "." (beside the layout) by default
+```
+
+Everything a build writes — `panels/`, `figure.{pdf,png,svg}`, `page.{pdf,png,svg}`, `<name>.tex`,
+`wireframe.png` — goes into that one folder, so it can be git-ignored and promoted in one piece.
+What stays beside the layout is what you write: the layout files and `<name>-figure.tex`.
+
 ### Several layouts for one figure
 
 The part between the dots in the file name is the *variant*; `layout.yaml` itself is `base`.
 
 | file | what it holds |
 | --- | --- |
-| `layout.yaml` | the layout you maintain, and what every command uses by default |
+| `layout.yaml` | the layout you maintain — or a symlink to the variant in use — and what every command uses by default |
 | `layout.detected.yaml` | what `plotplate from-pdf` or `plotplate detect` read from an existing figure |
 | `layout.optimized.yaml` | what `plotplate optimize` made of a draft |
 | `layout.<anything>.yaml` | your own alternatives (`layout.single-column.yaml`, `layout.poster.yaml`) |
@@ -56,6 +66,25 @@ plotplate view figures/figure_1              # offers every variant, one at a ti
 
 `plotplate view` finds every variant next to the layout, lets you switch which one is drawn, and lays
 the others over it as outlines — that is how you see what an optimization actually changed.
+
+**No command writes `layout.yaml`.**
+A command that rewrites a layout writes a new variant named after what it did — `resolve` →
+`layout.resolved.yaml`, `tidy` → `layout.tidied.yaml`, `merge` → `layout.merged.yaml`, `relabel` →
+`layout.relabeled.yaml`, `optimize` → `layout.optimized.yaml` — so the file you selected is never
+changed under you and the previous state is still on disk.
+`--as NAME` (`--variant NAME` for `merge`, whose `--as` names the merged panel) picks another name,
+and `--in-place` is the old behaviour when you want it.
+Running the same command twice chains instead of losing the first result: given its own output, it
+writes back to it.
+
+A command that *creates* a layout names it after where it came from — `detect` and `from-pdf` →
+`layout.detected.yaml`, `svg-import` → `layout.svg.yaml`, `new` → `layout.new.yaml` — in the folder
+you point at, and refuses to replace an existing one without `--force`, `--as` or `-o`.
+
+If you keep several layouts and choose between them, `layout.yaml` can be a **symlink** to the chosen
+one (`ln -sfn layout.manual.yaml figures/fig1/layout.yaml`).
+Every command follows it, writes through it rather than over it, and `plotplate view` lists each
+layout once, marking the selected one.
 Panels are drawn for one geometry, so a variant with different boxes reports `panel-size` until you
 rebuild against the layout you decided to keep.
 
@@ -240,12 +269,12 @@ plotplate build layout.yaml A C    # only some panels
 plotplate check layout.yaml        # without running anything
 ```
 
-`preview.pdf` places the panel PDFs exactly like the LaTeX snippet does.
+`figure.pdf` places the panel PDFs exactly like the LaTeX snippet does.
 Only the panel-letter font can differ, because LaTeX draws the letters with the document font.
 
 The preview is the figure file itself, without page margins.
-`plotplate preview layout.yaml --page a4` also writes `preview-page.pdf/png`: the figure centred on a
-page with a caption and placeholder text.
+`plotplate preview layout.yaml --page a4` also writes `page.pdf/png/svg`: the figure centred on a page
+with a caption and placeholder text.
 
 ### Look at it while you work
 

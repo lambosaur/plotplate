@@ -87,7 +87,7 @@ def write_figure_tex(
     labels: bool = True,
 ) -> Path:
     """Write the snippet to ``out`` (default ``<layout dir>/<name>.tex``)."""
-    target = Path(out) if out is not None else layout.base_dir / f"{layout.name}.tex"
+    target = Path(out) if out is not None else layout.output_dir / f"{layout.name}.tex"
     target.write_text(figure_tex(layout, graphics_prefix, labels), encoding="utf-8")
     return target
 
@@ -95,7 +95,7 @@ def write_figure_tex(
 def write_figure_scaffold(
     layout: Layout,
     out: str | Path | None = None,
-    graphics_prefix: str = "",
+    graphics_prefix: str | None = None,
     force: bool = False,
 ) -> Path:
     r"""Write ``<name>-figure.tex``: the figure as the manuscript sees it, for the author to edit.
@@ -111,13 +111,19 @@ def write_figure_scaffold(
     leaves this file alone, so a caption written here survives every rebuild. ``force`` writes a
     fresh one, which is how to get the scaffold back after deleting it.
 
-    ``graphics_prefix`` is where the included file sits *as the manuscript sees it*. The copy
-    written next to the layout uses no prefix, so it compiles from the figure folder; the copy
-    ``plotplate bundle`` writes carries the path the Overleaf project will use.
+    ``graphics_prefix`` is where the included file sits *as the manuscript sees it*. Left out,
+    it is the path from this file to the output folder -- nothing when a build writes beside the
+    layout, ``output/`` when it writes into ``output_dir`` -- so the file compiles from the
+    figure folder. The copy ``plotplate bundle`` writes carries the Overleaf path instead.
     """
+    import os
+
     target = Path(out) if out is not None else layout.base_dir / f"{layout.name}-figure.tex"
     if target.exists() and not force:
         return target
+    if graphics_prefix is None:
+        relative = os.path.relpath(layout.output_dir, layout.base_dir)
+        graphics_prefix = "" if relative == "." else f"{relative}/"
     body = f"{graphics_prefix}{layout.name}.tex" if graphics_prefix else f"{layout.name}.tex"
     anchor = f"fig:{layout.name}"
     lines = [
@@ -148,7 +154,7 @@ def write_figure_scaffold(
 def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = None) -> Path:
     r"""Copy ``<name>.tex`` and the panel PDFs into ``out_dir`` for upload to Overleaf.
 
-    The composed figure (``preview.pdf``) is copied too, as ``<name>.pdf``, when it exists. It
+    The composed figure (``figure.pdf``) is copied too, as ``<name>.pdf``, when it exists. It
     is not what the manuscript includes -- ``\input{<name>.tex}`` places the panels, which is
     what keeps them at scale 1.0 and the letters where the layout puts them -- but it is the
     one file to look at, to send to a co-author, and to hand-finish in a drawing program when a
@@ -173,7 +179,9 @@ def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = No
             missing.append(name)
     if missing:
         raise FileNotFoundError(f"Panels without PDF: {missing}; run their notebooks first")
-    composed = layout.base_dir / "preview.pdf"
+    composed = layout.output_dir / "figure.pdf"
+    if not composed.exists():  # written by plotplate 0.2 and earlier
+        composed = layout.base_dir / "preview.pdf"
     if composed.exists():
         shutil.copy2(composed, out_dir / f"{layout.name}.pdf")
     write_figure_scaffold(

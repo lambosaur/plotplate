@@ -266,14 +266,14 @@ def preview(
     rules: dict[str, list[float]] | None = None,
     png_dpi: int = 200,
 ) -> dict[str, Path]:
-    """Compose ``preview.pdf``/``preview.png`` (vector, from panel PDFs) and ``preview.svg``.
+    """Compose ``figure.pdf``/``figure.png`` (vector, from panel PDFs) and ``figure.svg``.
 
     ``outlines`` draws every panel box, ``highlight`` only the named panel's box (thicker).
 
-    ``preview.svg`` links the panel SVGs (Inkscape-friendly, like a manual Inkscape
+    ``figure.svg`` links the panel SVGs (Inkscape-friendly, like a manual Inkscape
     assembly), so it updates when panels are re-exported.
     """
-    out_dir = Path(out_dir) if out_dir is not None else layout.base_dir
+    out_dir = Path(out_dir) if out_dir is not None else layout.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     doc = compose(layout, labels=labels, outlines=outlines, highlight=highlight)
     if rules:
@@ -292,11 +292,11 @@ def preview(
                 pymupdf.Point(mm_to_pt(layout.width), mm_to_pt(value)),
                 color=(0.85, 0.2, 0.2), width=0.3, dashes="[2 2] 0",
             )  # fmt: skip
-    pdf_path, png_path = out_dir / "preview.pdf", out_dir / "preview.png"
+    pdf_path, png_path = out_dir / "figure.pdf", out_dir / "figure.png"
     doc.save(pdf_path, garbage=3, deflate=True)
     doc[0].get_pixmap(dpi=png_dpi).save(png_path)
     doc.close()
-    svg_path = _preview_svg(layout, out_dir / "preview.svg", labels=labels)
+    svg_path = _preview_svg(layout, out_dir / "figure.svg", labels=labels)
     return {"pdf": pdf_path, "png": png_path, "svg": svg_path}
 
 
@@ -358,14 +358,14 @@ def page_view(
     """Show the figure as it would sit on a printed page: centred, with a caption and text lines.
 
     The figure files themselves have no margin: margins and the caption belong to the
-    manuscript. This view only puts the figure in that context (``preview-page.pdf/png``).
+    manuscript. This view only puts the figure in that context (``page.pdf/png/svg``).
 
     ``outlines`` draws the panel boxes **here only**: the page view is a check, while
-    ``preview.png`` beside it is the figure itself and stays clean.
+    ``figure.png`` beside it is the figure itself and stays clean.
     """
     import pymupdf
 
-    out_dir = Path(out_dir) if out_dir is not None else layout.base_dir
+    out_dir = Path(out_dir) if out_dir is not None else layout.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     # The layout's own `page:` section wins; `paper` only supplies one when it declares none.
     sheet = layout.sheet_geometry(paper)
@@ -406,11 +406,15 @@ def page_view(
             fill=(0.85, 0.85, 0.85),
         )
         y += 4.5
-    pdf_path, png_path = out_dir / "preview-page.pdf", out_dir / "preview-page.png"
+    pdf_path, png_path = out_dir / "page.pdf", out_dir / "page.png"
+    svg_path = out_dir / "page.svg"
     doc.save(pdf_path, garbage=3, deflate=True)
     page.get_pixmap(dpi=100).save(png_path)
+    # Text stays text, as in every other SVG this package writes, so the page view can be
+    # opened in a drawing program and read.
+    svg_path.write_text(page.get_svg_image(text_as_path=False), encoding="utf-8")
     doc.close()
-    return {"pdf": pdf_path, "png": png_path}
+    return {"pdf": pdf_path, "png": png_path, "svg": svg_path}
 
 
 def _preview_svg(layout: Layout, path: Path, labels: bool) -> Path:

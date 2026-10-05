@@ -16,7 +16,7 @@ From the figure folder:
 
 ## Visual part
 
-Read `preview.png` (identical placement to the LaTeX output) and check:
+Read `figure.png` (identical placement to the LaTeX output) and check:
 
 - Consistent encoding across panels: the same entity has the same color (`style.yaml` colors) and the
   same name everywhere.

@@ -122,10 +122,35 @@ def cmd_journals(args: argparse.Namespace) -> int:
     return 0
 
 
+def _created_layout_path(
+    args: argparse.Namespace, folder: Path, qualifier: str, update: bool = False
+) -> Path | None:
+    """Where a command that creates a layout should write, and None when it refuses.
+
+    A new layout is named after where it came from -- ``layout.detected.yaml``,
+    ``layout.svg.yaml`` -- and never ``layout.yaml``, which is the file a figure folder selects
+    and which only the author should decide. An existing file is not overwritten without being
+    told: two sources drafting into the same folder would otherwise replace one another.
+    ``update`` is for the command that is *meant* to write over a layout it reads first, which
+    is what ``svg-import`` does on the way back from a drawing program.
+    """
+    name = getattr(args, "variant", None) or qualifier
+    if "/" in name or "\\" in name:
+        print(f"--as takes a variant name, not a path: {name}", file=sys.stderr)
+        return None
+    given = getattr(args, "output", None)
+    target = Path(given) if given else folder / f"layout.{name}.yaml"
+    if given and target.is_dir():
+        target = target / f"layout.{name}.yaml"
+    if target.exists() and not update and not getattr(args, "force", False):
+        print(f"{_rel(target)} exists; use --force, --as NAME or -o", file=sys.stderr)
+        return None
+    return target
+
+
 def cmd_new(args: argparse.Namespace) -> int:
-    out = Path(args.output)
-    if out.exists() and not args.force:
-        print(f"{out} exists (use --force)", file=sys.stderr)
+    out = _created_layout_path(args, Path(args.output or "."), "new")
+    if out is None:
         return 1
     rows = [r.strip() for r in args.mosaic.split("/")]
     data: dict[str, Any] = {
@@ -163,11 +188,38 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return _print_issues(layout.validate())
 
 
+def _variant_out(args: argparse.Namespace, source: Path, verb: str) -> Path | None:
+    """Where a command that rewrites a layout should write, and None when it refuses.
+
+    Nothing overwrites the layout it was given unless it is told to. The default is a new
+    variant named after what was done (``layout.tidied.yaml``), so the file a figure folder
+    selects is never changed behind the author's back -- and so that the previous state is
+    still on disk when the result is not what was wanted.
+
+    Running the same command twice is a chain, not a loss: when the input *is* the file this
+    command would write, it writes back to it, so `merge A B --as X` followed by
+    `merge C D --as Y` keeps both merges.
+    """
+    if getattr(args, "in_place", False):
+        return source
+    if getattr(args, "output", None):
+        return Path(args.output)
+    name = getattr(args, "variant", None) or verb
+    if "/" in name or "\\" in name:
+        print(f"--as takes a variant name, not a path: {name}", file=sys.stderr)
+        return None
+    target = variant_path(source, name)
+    return source if target.name == source.name else target
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     """Print or write the layout with all boxes made explicit (mosaic/guides resolved)."""
     layout = Layout.load(args.layout)
-    dump_yaml(layout.resolved(), args.output or layout.file)
-    print(f"wrote {_rel(args.output or args.layout)}")
+    out = _variant_out(args, layout.file, "resolved")
+    if out is None:
+        return 1
+    dump_yaml(layout.resolved(), out)
+    print(f"wrote {_rel(out)}")
     return 0
 
 
@@ -187,7 +239,9 @@ def cmd_svg_export(args: argparse.Namespace) -> int:
 def cmd_svg_import(args: argparse.Namespace) -> int:
     from .svg import import_svg
 
-    target = Path(args.output) if args.output else Path(args.svg).with_suffix(".yaml")
+    target = _created_layout_path(args, Path(args.svg).parent, "svg", update=True)
+    if target is None:
+        return 1
     base = load_yaml(target) if target.exists() else None
     data, issues = import_svg(args.svg, base)
     dump_yaml(data, target)
@@ -208,7 +262,9 @@ def cmd_detect(args: argparse.Namespace) -> int:
         attach_mm=args.attach,
         threshold=args.threshold,
     )
-    out = Path(args.output)
+    out = _created_layout_path(args, Path(args.image).parent, "detected")
+    if out is None:
+        return 1
     dump_yaml(data, out)
     print(f"wrote {_rel(out)}: {len(data['panels'])} segments")
     print("rename and merge them into panels, then run `plotplate tidy`")
@@ -225,15 +281,38 @@ def cmd_merge(args: argparse.Namespace) -> int:
 
     path = resolve_layout_path(args.layout)
     data = merge_panels(load_yaml(path), args.panels, args.name)
-    out = args.output or path
+    out = _variant_out(args, path, "merged")
+    if out is None:
+        return 1
     dump_yaml(data, out)
     print(f"wrote {_rel(out)}: {'+'.join(args.panels)} -> {args.name}")
     return 0
 
 
+def _retarget_width(
+    args: argparse.Namespace, data: dict[str, Any], paper: str | None
+) -> dict[str, Any] | None:
+    """Scale a drafted layout to ``--width`` (millimetres or a journal width name)."""
+    from .tidy import scale_layout
+
+    width = _number_or_name(args.width)
+    if isinstance(width, str):
+        widths = (
+            (load_journal(args.journal).get("page") or {}).get("widths") or {} if args.journal else {}
+        )
+        if width not in widths:
+            print(f"--width {width!r}: not a number nor a width of --journal {args.journal}")
+            return None
+        width = float(widths[width])
+    data = scale_layout(data, width)
+    if data.get("page") and paper:  # margins follow the rescaled figure
+        data["page"] = sheet_for(paper, float(area_section(data)["width"]))
+    return data
+
+
 def cmd_from_pdf(args: argparse.Namespace) -> int:
     from .pdfimport import layout_from_pdf, render_area
-    from .tidy import fill_gaps, scale_layout, tidy
+    from .tidy import fill_gaps, tidy
 
     result = layout_from_pdf(
         args.pdf,
@@ -250,23 +329,15 @@ def cmd_from_pdf(args: argparse.Namespace) -> int:
     if args.journal:
         data["journal"] = args.journal
     if args.width is not None:
-        width = _number_or_name(args.width)
-        if isinstance(width, str):
-            widths = (
-                (load_journal(args.journal).get("page") or {}).get("widths") or {}
-                if args.journal
-                else {}
-            )
-            if width not in widths:
-                print(f"--width {width!r}: not a number nor a width of --journal {args.journal}")
-                return 1
-            width = float(widths[width])
-        data = scale_layout(data, width)
-        if data.get("page") and result.paper:  # margins follow the rescaled figure
-            data["page"] = sheet_for(result.paper, float(area_section(data)["width"]))
+        scaled = _retarget_width(args, data, result.paper)
+        if scaled is None:
+            return 1
+        data = scaled
     if args.fill_gap is not None:
         data = tidy(fill_gaps(data, args.fill_gap), tolerance=args.tolerance, step=0.5)
-    out = Path(args.output)
+    out = _created_layout_path(args, Path(args.pdf).parent, "detected")
+    if out is None:
+        return 1
     dump_yaml(data, out)
     how = "placed graphics" if result.method == "placed" else "gutter detection"
     print(f"wrote {_rel(out)}: {len(data['panels'])} panels from {how}, {list(data['panels'])}")
@@ -445,7 +516,9 @@ def cmd_relabel(args: argparse.Namespace) -> int:
             entry["label"] = {"text": spec.label, "offset": list(spec.label_offset)}
         panels[name] = entry
     data["labels"] = "id"  # labels are explicit now
-    out = args.output or layout.file
+    out = _variant_out(args, layout.file, "relabeled")
+    if out is None:
+        return 1
     dump_yaml(data, out)
     letters = {name: (panels[name].get("label") or {}).get("text") for name in panels}
     print(f"wrote {_rel(out)}: {letters}")
@@ -460,7 +533,9 @@ def cmd_tidy(args: argparse.Namespace) -> int:
     if args.fill_gap is not None:
         data = fill_gaps(data, args.fill_gap)
     data = tidy(data, tolerance=args.tolerance, step=args.step)
-    out = args.output or path
+    out = _variant_out(args, path, "tidied")
+    if out is None:
+        return 1
     dump_yaml(data, out)
     print(f"wrote {_rel(out)}")
     return _print_issues(Layout.load(out).validate())
@@ -471,7 +546,7 @@ def cmd_wireframe(args: argparse.Namespace) -> int:
 
     layout = Layout.load(args.layout)
     out = wireframe(
-        layout, args.output or layout.base_dir / "wireframe.png", background=args.background
+        layout, args.output or layout.output_dir / "wireframe.png", background=args.background
     )
     print(f"wrote {_rel(out)}")
     return 0
@@ -549,8 +624,8 @@ def _build_figure_demo(dest: Path, python: str) -> int:
     print("\nlook at, in order:")
     for path in (
         figure / "detected.wireframe.png",
-        figure / "wireframe.png",
-        figure / "preview.png",
+        layout.output_dir / "wireframe.png",
+        layout.output_dir / "figure.png",
         page["png"],
     ):
         print(f"  {_rel(path)}")
@@ -803,7 +878,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     import subprocess
 
     from .latex import write_figure_scaffold, write_figure_tex
-    from .render import preview
+    from .render import page_view, preview
 
     layout = Layout.load(args.layout)
     sources = panel_sources(layout, getattr(args, "sources", None))
@@ -826,10 +901,20 @@ def cmd_build(args: argparse.Namespace) -> int:
         if result.returncode != 0:
             failed.append(name)
     paths = preview(layout)
+    wanted = dict(layout.raw.get("preview") or {})
+    if wanted.get("page"):  # the layout asks for the page view on every build
+        paths.update(
+            {
+                f"page-{key}": value
+                for key, value in page_view(
+                    layout, paper=str(wanted["page"]), outlines=bool(wanted.get("outlines"))
+                ).items()
+            }
+        )
     tex = write_figure_tex(layout)
     scaffold = write_figure_scaffold(layout)  # once; a caption written there survives rebuilds
-    print(f"wrote {paths['pdf'].name}, {paths['png'].name}, {paths['svg'].name}, {tex.name}")
-    print(f"  {scaffold.name}: the figure environment and its caption, yours to edit")
+    print("wrote " + ", ".join(_rel(path) for path in [*paths.values(), tex]))
+    print(f"  {_rel(scaffold)}: the figure environment and its caption, yours to edit")
     status = cmd_check(args)
     if failed:
         print(f"FAILED scripts: {failed}")
@@ -983,7 +1068,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("journals", cmd_journals, "List bundled journal presets.")
 
     p = add("new", cmd_new, "Create a layout from a mosaic string, e.g. 'AAB/CDD'.")
-    p.add_argument("output")
+    p.add_argument("output", nargs="?", help="layout file, or a folder to write layout.new.yaml into")
+    p.add_argument("--as", dest="variant", metavar="NAME", help="write layout.NAME.yaml instead")
     p.add_argument(
         "--mosaic", required=True, help="rows separated by '/', one char per cell, '.' empty"
     )
@@ -1001,6 +1087,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("resolve", cmd_resolve, "Make every box explicit (resolve constraints, mosaic, guides).")
     p.add_argument("layout")
     p.add_argument("-o", "--output")
+    p.add_argument(
+        "--as",
+        dest="variant",
+        metavar="NAME",
+        help="write layout.NAME.yaml next to the input (default: layout.resolved.yaml)",
+    )
+    p.add_argument(
+        "--in-place", action="store_true", help="overwrite the input layout instead of a variant"
+    )
 
     p = add("svg-export", cmd_svg_export, "Write an Inkscape SVG of the layout.")
     p.add_argument("layout")
@@ -1009,12 +1104,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("svg-import", cmd_svg_import, "Update a layout YAML from rectangles drawn in Inkscape.")
     p.add_argument("svg")
-    p.add_argument("-o", "--output", help="layout YAML to update/create (default: <svg>.yaml)")
+    p.add_argument(
+        "-o", "--output", help="layout YAML to update (default: layout.svg.yaml beside the SVG)"
+    )
+    p.add_argument("--as", dest="variant", metavar="NAME", help="write layout.NAME.yaml instead")
 
     p = add("detect", cmd_detect, "Draft panel boxes from a figure screenshot (XY-cut).")
     p.add_argument("image")
     p.add_argument("--width", type=float, required=True, help="figure width in mm = image width")
-    p.add_argument("-o", "--output", required=True)
+    p.add_argument(
+        "-o", "--output", help="layout file or folder (default: layout.detected.yaml by the image)"
+    )
+    p.add_argument("--as", dest="variant", metavar="NAME", help="write layout.NAME.yaml instead")
+    p.add_argument("--force", action="store_true", help="overwrite an existing layout file")
     p.add_argument("--name")
     p.add_argument("--min-gap", type=float, default=1.5, help="mm")
     p.add_argument("--min-size", type=float, default=3.0, help="mm")
@@ -1024,7 +1126,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("from-pdf", cmd_from_pdf, "Draft a layout from a PDF page (placed graphics + labels).")
     p.add_argument("pdf")
-    p.add_argument("-o", "--output", required=True)
+    p.add_argument(
+        "-o", "--output", help="layout file or folder (default: layout.detected.yaml by the PDF)"
+    )
+    p.add_argument("--as", dest="variant", metavar="NAME", help="write layout.NAME.yaml instead")
+    p.add_argument("--force", action="store_true", help="overwrite an existing layout file")
     p.add_argument("--page", type=int, default=1, help="1-based page number")
     p.add_argument("--name")
     p.add_argument("--journal", help="journal preset to record in the layout")
@@ -1054,6 +1160,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("tidy", cmd_tidy, "Align nearly-equal edges and snap boxes to a step.")
     p.add_argument("layout")
     p.add_argument("-o", "--output")
+    p.add_argument(
+        "--as",
+        dest="variant",
+        metavar="NAME",
+        help="write layout.NAME.yaml next to the input (default: layout.tidied.yaml)",
+    )
+    p.add_argument(
+        "--in-place", action="store_true", help="overwrite the input layout instead of a variant"
+    )
     p.add_argument("--tolerance", type=float, default=1.0, help="mm")
     p.add_argument("--step", type=float, default=0.5, help="mm, 0 to disable")
     p.add_argument(
@@ -1097,24 +1212,42 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("relabel", cmd_relabel, "Write explicit panel letters, assigned in reading order.")
     p.add_argument("layout")
     p.add_argument("-o", "--output")
+    p.add_argument(
+        "--as",
+        dest="variant",
+        metavar="NAME",
+        help="write layout.NAME.yaml next to the input (default: layout.relabeled.yaml)",
+    )
+    p.add_argument(
+        "--in-place", action="store_true", help="overwrite the input layout instead of a variant"
+    )
 
     p = add("merge", cmd_merge, "Merge panels (e.g. detected segments) into one, by box union.")
     p.add_argument("layout")
     p.add_argument("panels", nargs="+")
     p.add_argument("--as", dest="name", required=True, help="name of the merged panel")
     p.add_argument("-o", "--output")
+    p.add_argument(
+        "--variant",
+        dest="variant",
+        metavar="NAME",
+        help="write layout.NAME.yaml next to the input (default: layout.merged.yaml)",
+    )
+    p.add_argument(
+        "--in-place", action="store_true", help="overwrite the input layout instead of a variant"
+    )
 
     p = add("wireframe", cmd_wireframe, "Draw the layout boxes, optionally over a screenshot.")
     p.add_argument("layout")
     p.add_argument("-o", "--output")
     p.add_argument("--background")
 
-    p = add("preview", cmd_preview, "Compose preview.pdf/png/svg from the saved panels.")
+    p = add("preview", cmd_preview, "Compose figure.pdf/png/svg from the saved panels.")
     p.add_argument("layout")
     p.add_argument("--output-dir")
     p.add_argument("--no-labels", action="store_true")
     p.add_argument("--outlines", action="store_true", help="outline every panel box in the figure")
-    p.add_argument("--page", choices=["a4", "letter"], help="also write preview-page.* on this paper")
+    p.add_argument("--page", choices=["a4", "letter"], help="also write page.* on this paper")
     p.add_argument(
         "--page-outlines",
         action="store_true",

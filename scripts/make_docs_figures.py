@@ -313,8 +313,8 @@ def run(force: bool = False) -> None:
             doc[0].get_pixmap(dpi=90).save(OUT / "step1-source-page.png")
         _thumbnail(figure / "detected.wireframe.png", OUT / "step2-draft-layout.png", 900)
         _thumbnail(figure / "wireframe.png", OUT / "step3-refined-layout.png", 900)
-        _thumbnail(figure / "preview.png", OUT / "step4-final-figure.png", 1100)
-        _thumbnail(figure / "preview-page.png", OUT / "step4-final-page.png", 600)
+        _thumbnail(figure / "figure.png", OUT / "step4-final-figure.png", 1100)
+        _thumbnail(figure / "page.png", OUT / "step4-final-page.png", 600)
 
         _pipeline(
             [

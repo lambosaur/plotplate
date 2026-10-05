@@ -7,6 +7,8 @@ A layout file (YAML) looks like::
     journal: nature            # bundled preset name or path to a preset YAML
     style_files: [../style.yaml]
     style: {font: {size: 7}}   # inline overrides, applied last
+    output_dir: output         # where builds write; default ".", the layout's own folder
+    preview: {page: a4}        # also write the page view on every build
     page: {paper: a4, margins: 25, caption: 25}   # the sheet the figure is printed on
     area: {width: double, height: 150}   # the figure itself: mm, or a journal width name
     guides:                    # named alignment lines an axes can be placed against (mm)
@@ -271,9 +273,20 @@ class Layout:
         return self.path.parent if self.path is not None else Path.cwd()
 
     @property
+    def output_dir(self) -> Path:
+        """Where everything built from this layout is written.
+
+        ``output_dir:`` in the layout, relative to it; the layout's own folder by default. The
+        sources -- the layout files and ``<name>-figure.tex`` -- always stay beside the layout;
+        everything a build produces (panels, the composed figure, the page view, the panels'
+        LaTeX) goes here, so one folder can be git-ignored and one folder promoted.
+        """
+        return self.base_dir / str(self.raw.get("output_dir") or ".")
+
+    @property
     def panels_dir(self) -> Path:
-        """Where panel files are written: ``<layout dir>/panels``."""
-        return self.base_dir / "panels"
+        """Where panel files are written: ``<output dir>/panels``."""
+        return self.output_dir / "panels"
 
     @property
     def colors(self) -> dict[str, str]:

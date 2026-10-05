@@ -90,6 +90,8 @@ panels:
 | `area.width` | yes | mm, or a width name of the journal preset (`single`, `double`…); `page.width` in older layouts |
 | `area.height` | yes | mm, or `solve` to compute it from the constraints |
 | `page` | no | the physical sheet: `paper` (a4, letter or `[w, h]`), `margins`, `caption` (mm) |
+| `output_dir` | no (default `.`) | folder for everything a build writes, relative to the layout |
+| `preview` | no | `{page: a4, outlines: true}`: write the page view on every build, with the boxes marked on it |
 | `labels` | no (default `id`) | `id`: the panel key is its letter. `auto`: keys are stable ids and letters are assigned in reading order |
 | `guides.x`, `guides.y` | no | named vertical and horizontal lines an axes can be placed against |
 | `page_guides.x`, `page_guides.y` | no | unnamed lines to arrange panels against; drawn across the whole sheet |

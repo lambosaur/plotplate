@@ -4,23 +4,61 @@ Notable changes per release.
 Versions follow [semantic versioning](https://semver.org); before 1.0 the layout file format may still
 change, and when it does, `schema:` is bumped and the old form keeps loading.
 
+## 0.3.0 — 2026-10-05
+
+For figure folders that keep several layouts and build into one place.
+Three breaking changes, all about *where* files go; nothing about how a figure is drawn.
+
+### Changed
+
+- **No command writes `layout.yaml`.** `resolve`, `tidy`, `merge` and `relabel` used to overwrite the
+  layout they were given; they now write `layout.resolved.yaml`, `layout.tidied.yaml`,
+  `layout.merged.yaml`, `layout.relabeled.yaml` — the pattern `optimize` already followed.
+  `--as NAME` picks another name (`--variant NAME` for `merge`, whose `--as` names the merged panel),
+  `--in-place` restores the old behaviour, and a command given its own output writes back to it, so
+  `merge … && merge …` chains instead of losing the first merge.
+- **A created layout is named after where it came from**: `detect` and `from-pdf` write
+  `layout.detected.yaml`, `svg-import` `layout.svg.yaml`, `new` `layout.new.yaml`, in the folder you
+  point at (`-o` may now be a folder, and is no longer required).
+  An existing file is not replaced without `--force`, `--as` or `-o`.
+- **The composed outputs are renamed**: `preview.{pdf,png,svg}` → `figure.{pdf,png,svg}` and
+  `preview-page.{pdf,png}` → `page.{pdf,png,svg}`.
+  `bundle` still reads `preview.pdf` when there is no `figure.pdf`, so a folder built by 0.2 still
+  bundles.
+
+### Added
+
+- `output_dir:` in the layout: one folder for everything a build writes — `panels/`, the composed
+  figure, the page view, the panels' `.tex`, the wireframe.
+  The layout files and `<name>-figure.tex` stay beside the layout, because they are sources.
+  Default unchanged (`.`).
+- `preview: {page: a4, outlines: true}` in the layout: `plotplate build` writes the page view every
+  time, and the outlines mark that view only — `figure.png` stays the figure itself.
+- The page view is written as SVG too, with its text kept as text.
+- `layout.yaml` may be a **symlink** to the variant in use.
+  Commands follow it and write through it rather than over it; `plotplate view` lists each layout once
+  and marks the selected one.
+
 ## 0.2.1 — 2026-10-05
 
 ### Fixed
 
 - `<name>-figure.tex` included `panels/<name>.tex`, where no such file is written: the panels file
-  sits next to the layout. The copy written beside the layout includes `<name>.tex`, the copy
-  `plotplate bundle` writes keeps the path the manuscript needs, and a comment says the path is
-  relative to whatever LaTeX compiles.
+  sits next to the layout.
+  The copy written beside the layout includes `<name>.tex`, the copy `plotplate bundle` writes keeps
+  the path the manuscript needs, and a comment says the path is relative to whatever LaTeX compiles.
 - `plotplate export` reported a missing or wrongly sized panel as a *warning* while refusing to write
-  the file. It is an error, says so, and points at the new flag.
+  the file.
+  It is an error, says so, and points at the new flag.
 
 ### Added
 
 - `plotplate preview --page-outlines`: the panel boxes are drawn on the page view only, so the figure
-  itself stays clean. `--outlines` is unchanged and applies to the figure.
+  itself stays clean.
+  `--outlines` is unchanged and applies to the figure.
 - `plotplate export --allow-missing`: write a draft with empty boxes where panels are missing, for
-  showing work in progress. Each hole is reported as a warning; the default still refuses.
+  showing work in progress.
+  Each hole is reported as a warning; the default still refuses.
 
 ## 0.2.0 — 2026-10-02
 

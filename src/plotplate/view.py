@@ -40,7 +40,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .geometry import Rect
 from .layout import Layout
-from .variants import BASE, find_layouts, variant_path
+from .variants import BASE, find_layouts, selected, variant_path
 
 #: What a variant may be called when the page saves one: a file name, not a path.
 VARIANT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}")
@@ -612,9 +612,10 @@ function renderVariants() {
     const row = document.createElement("label");
     const color = COLORS[i % COLORS.length];
     const shown = variant.key === active;
+    const chosen = variant.key === state.selected ? " · selected" : "";
     const detail = variant.error
       ? "broken: " + variant.error
-      : `${variant.file} · ${variant.width} x ${variant.height} mm`;
+      : `${variant.file}${chosen} · ${variant.width} x ${variant.height} mm`;
     row.innerHTML =
       `<input type="radio" name="active" value="${variant.key}" ${shown ? "checked" : ""}>` +
       (shown ? "" : `<input type="checkbox" data-compare="${variant.key}" ` +
@@ -1075,10 +1076,11 @@ class Viewer:
         return found
 
     def path(self, key: str | None = None) -> Path:
-        """The file of one variant (the base one, or the only one, by default)."""
+        """The file of one variant (the selected one, or the only one, by default)."""
         found = self.variants()
         if key is None:
-            return found.get(BASE) or next(iter(found.values()))
+            chosen = selected(self.target)
+            return found.get(chosen or BASE) or next(iter(found.values()))
         if key not in found:
             raise KeyError(f"no layout variant {key!r}; have {list(found)}")
         return found[key]
@@ -1118,11 +1120,16 @@ class Viewer:
         from .render import panel_status
 
         variants = self.variants()
-        active = key if key in variants else BASE if BASE in variants else next(iter(variants))
+        chosen = selected(self.target)
+        fallback = (
+            chosen if chosen in variants else BASE if BASE in variants else next(iter(variants))
+        )
+        active = key if key in variants else fallback
         common = {
             "stamp": self.stamp(),
             "active": active,
             "editable": self.editable,
+            "selected": chosen,
             "variants": [self._summary(name, path) for name, path in variants.items()],
         }
         try:

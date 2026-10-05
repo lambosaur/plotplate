@@ -131,14 +131,19 @@ Every output is written next to the `layout.yaml` you pass, never inside the ins
 
 ```text
 any/folder/figure_1/
-  layout.yaml            # you write it (step 1)
-  layout.optimized.yaml  # optional alternatives: layout.<variant>.yaml
-  panel_A_*.py           # your panel notebooks (step 2)
-  data/                  # optional: the tables your notebooks read
-  panels/A.pdf ...       # written by panel.save()
-  preview.pdf/png        # written by plotplate build / plotplate preview
-  figure_1.tex           # written by plotplate build / plotplate latex
+  layout.yaml             # you write it (step 1), or a symlink to the variant in use
+  layout.optimized.yaml   # alternatives, named after where they came from
+  figure_1-figure.tex     # the caption and the figure environment: yours, written once
+  panel_A_*.py            # your panel notebooks (step 2)
+  data/                   # optional: the tables your notebooks read
+  output/                 # everything a build writes, when output_dir: output
+    panels/A.pdf ...      #   written by panel.save()
+    figure.pdf/png/svg    #   the composed figure
+    page.pdf/png/svg      #   it on a sheet, with a caption (preview: {page: a4})
+    figure_1.tex          #   the panels, placed, for LaTeX
 ```
+
+Without `output_dir`, those files are written beside the layout, as before.
 
 Commands take either the file or the folder (`plotplate build figures/figure_1`), and `plotplate view`
 offers every `layout.<variant>.yaml` it finds next to `layout.yaml`.
@@ -202,8 +207,10 @@ plotplate export figure_1 -o Figure1.pdf               # single production file 
 
 Every command writes files and prints text; none of them opens a window, so they work the same over
 SSH or in CI.
-`plotplate preview` writes `preview.pdf`, `preview.png` and `preview.svg` next to the layout, and
-`--page a4` adds `preview-page.pdf/png`.
+`plotplate preview` writes `figure.pdf`, `figure.png` and `figure.svg` into the figure's output
+folder, and `--page a4` adds `page.pdf/png/svg`.
+`output_dir: output` in the layout puts every built file in one folder, leaving the layouts and the
+caption file beside it as the only things to track.
 Open them with your own viewer, or read the PNG with an agent.
 
 The preview has no margins on purpose: it is the figure file itself.

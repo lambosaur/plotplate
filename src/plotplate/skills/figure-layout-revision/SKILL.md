@@ -63,7 +63,7 @@ see the `figure-layout-from-existing` skill), into `new.yaml`.
    - rename notebooks and `panels/<key>.*` files when a key changes.
 1. `plotplate build layout.yaml` and fix what the checks report (see the `figure-panel-fitting`
    skill).
-1. Read `preview.png`; compare with the intention; report the result and any remaining warnings.
+1. Read `figure.png`; compare with the intention; report the result and any remaining warnings.
 
 ## Rules
 
