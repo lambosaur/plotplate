@@ -67,24 +67,26 @@ plotplate view figures/figure_1              # offers every variant, one at a ti
 `plotplate view` finds every variant next to the layout, lets you switch which one is drawn, and lays
 the others over it as outlines — that is how you see what an optimization actually changed.
 
-**No command writes `layout.yaml`.**
-A command that rewrites a layout writes a new variant named after what it did — `resolve` →
-`layout.resolved.yaml`, `tidy` → `layout.tidied.yaml`, `merge` → `layout.merged.yaml`, `relabel` →
-`layout.relabeled.yaml`, `optimize` → `layout.optimized.yaml` — so the file you selected is never
-changed under you and the previous state is still on disk.
-`--as NAME` (`--variant NAME` for `merge`, whose `--as` names the merged panel) picks another name,
-and `--in-place` is the old behaviour when you want it.
-Running the same command twice chains instead of losing the first result: given its own output, it
-writes back to it.
+**`layout.yaml` is never written unless you name it.**
+It is the layout the figure uses, so a command that rewrites a layout — `resolve`, `tidy`, `merge`,
+`relabel` — refuses it and tells you to name an output:
 
-A command that *creates* a layout names it after where it came from — `detect` and `from-pdf` →
-`layout.detected.yaml`, `svg-import` → `layout.svg.yaml`, `new` → `layout.new.yaml` — in the folder
-you point at, and refuses to replace an existing one without `--force`, `--as` or `-o`.
+```sh
+plotplate tidy figures/figure_1                      # refused: that is layout.yaml
+plotplate tidy figures/figure_1 -o figures/figure_1/layout.tidied.yaml   # a new one
+plotplate tidy figures/figure_1/layout.detected.yaml # a draft: rewritten in place
+```
+
+Drafts are rewritten in place, because that is what a draft is for: `detect`, `from-pdf` and
+`svg-import` all write **`layout.detected.yaml`** — one name, whatever was read — and `optimize`
+writes `layout.optimized.yaml` (`--as NAME` for another).
+Everything else is yours to name.
 
 If you keep several layouts and choose between them, `layout.yaml` can be a **symlink** to the chosen
 one (`ln -sfn layout.manual.yaml figures/fig1/layout.yaml`).
-Every command follows it, writes through it rather than over it, and `plotplate view` lists each
-layout once, marking the selected one.
+Every command follows it and writes through it rather than over it, and `plotplate view` lists the
+file once rather than under both names.
+Switching the link is a one-line shell command, so plotplate has none of its own.
 Panels are drawn for one geometry, so a variant with different boxes reports `panel-size` until you
 rebuild against the layout you decided to keep.
 

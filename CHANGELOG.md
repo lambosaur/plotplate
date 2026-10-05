@@ -35,9 +35,9 @@ Three breaking changes, all about *where* files go; nothing about how a figure i
 - `preview: {page: a4, outlines: true}` in the layout: `plotplate build` writes the page view every
   time, and the outlines mark that view only — `figure.png` stays the figure itself.
 - The page view is written as SVG too, with its text kept as text.
-- `layout.yaml` may be a **symlink** to the variant in use.
-  Commands follow it and write through it rather than over it; `plotplate view` lists each layout once
-  and marks the selected one.
+- `layout.yaml` may be a **symlink** to the layout in use.
+  Commands follow it and write through it rather than over it, and a file that appears twice under two
+  names (the link and its target) is listed once by `plotplate view`.
 
 ## 0.2.1 — 2026-10-05
 
