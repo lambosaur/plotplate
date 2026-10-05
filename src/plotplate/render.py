@@ -188,14 +188,19 @@ def compose(
 
     status = panel_status(layout)
     if strict:
+        # Reported as errors here, whatever level they carry elsewhere: they stop the export.
         problems = [
-            str(issue)
+            str(Issue("error", issue.code, issue.message))
             for info in status.values()
             for issue in info["issues"]
             if issue.code in {"panel-missing", "panel-size"}
         ]
         if problems:
-            raise ValueError("cannot export the figure:\n  " + "\n  ".join(problems))
+            raise ValueError(
+                "cannot export the figure:\n  "
+                + "\n  ".join(problems)
+                + "\n  draw the panels first, or use --allow-missing for a draft"
+            )
     label_style = layout.style["panel_label"]
     families = list(layout.style["font"]["family"])
     label_font = _font_file(families, bold=label_style["weight"] == "bold")
@@ -296,14 +301,15 @@ def preview(
 
 
 def export_figure(
-    layout: Layout, out: str | Path, dpi: int | None = None
+    layout: Layout, out: str | Path, dpi: int | None = None, allow_missing: bool = False
 ) -> tuple[Path, list[Issue]]:
     """Write the final composite figure file (one file, all panels, letters included).
 
     The format follows the file extension: ``.pdf`` (vector, fonts embedded), ``.png``,
     or ``.tif``/``.tiff`` (LZW-compressed, RGB, as PLOS requires). Missing or wrongly
-    sized panels are an error. Returns the path and warnings about the journal's
-    accepted formats.
+    sized panels are an error, because the file is a deliverable; ``allow_missing`` turns them
+    into empty boxes and a warning instead, for a draft to show someone. Returns the path and
+    the warnings (the journal's accepted formats, and the holes when any were allowed).
     """
     from PIL import Image
 
@@ -319,9 +325,16 @@ def export_figure(
         journal = (layout.journal or {}).get("name")
         message = f"{journal} accepts {accepted} for final figures, not {fmt}"
         issues.append(Issue("warning", "export-format", message))
+    if allow_missing:
+        issues += [
+            Issue("warning", issue.code, f"{issue.message} (drawn as an empty box)")
+            for info in panel_status(layout).values()
+            for issue in info["issues"]
+            if issue.code in {"panel-missing", "panel-size"}
+        ]
     dpi = dpi or int(deliverable.get("raster_dpi") or layout.style["export"]["dpi"])
     out.parent.mkdir(parents=True, exist_ok=True)
-    doc = compose(layout, strict=True)
+    doc = compose(layout, strict=not allow_missing)
     if fmt == "pdf":
         doc.save(out, garbage=3, deflate=True)
     else:
@@ -336,12 +349,19 @@ def export_figure(
 
 
 def page_view(
-    layout: Layout, out_dir: str | Path | None = None, paper: str = "a4"
+    layout: Layout,
+    out_dir: str | Path | None = None,
+    paper: str = "a4",
+    *,
+    outlines: bool = False,
 ) -> dict[str, Path]:
     """Show the figure as it would sit on a printed page: centred, with a caption and text lines.
 
     The figure files themselves have no margin: margins and the caption belong to the
     manuscript. This view only puts the figure in that context (``preview-page.pdf/png``).
+
+    ``outlines`` draws the panel boxes **here only**: the page view is a check, while
+    ``preview.png`` beside it is the figure itself and stays clean.
     """
     import pymupdf
 
@@ -355,7 +375,7 @@ def page_view(
     left, top = sheet.area.left, sheet.area.top
     if left < 0:
         raise ValueError(f"figure width {layout.width} mm does not fit on {sheet.paper} paper")
-    figure = compose(layout)
+    figure = compose(layout, outlines=outlines)
     doc = pymupdf.open()
     page = doc.new_page(width=mm_to_pt(paper_w), height=mm_to_pt(paper_h))
     target = Rect(left, top, layout.width, layout.height)

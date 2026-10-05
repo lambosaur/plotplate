@@ -492,7 +492,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
         layout, args.output_dir, labels=not args.no_labels, outlines=args.outlines, rules=rules
     )
     if args.page:
-        page = page_view(layout, args.output_dir, args.page)
+        page = page_view(layout, args.output_dir, args.page, outlines=args.page_outlines)
         paths.update({f"page-{key}": value for key, value in page.items()})
     print("wrote " + ", ".join(_rel(p) for p in paths.values()))
     return 0
@@ -627,7 +627,7 @@ def cmd_latex(args: argparse.Namespace) -> int:
     )
     print(f"wrote {_rel(out)}")
     if not args.no_scaffold:
-        scaffold = write_figure_scaffold(layout, graphics_prefix=args.prefix)
+        scaffold = write_figure_scaffold(layout)
         print(f"{'wrote' if scaffold.stat().st_size else 'kept'} {_rel(scaffold)}: yours to edit")
     return 0
 
@@ -660,7 +660,13 @@ def cmd_export(args: argparse.Namespace) -> int:
 
     layout = Layout.load(args.layout)
     status = cmd_check(args)
-    out, issues = export_figure(layout, args.output, dpi=args.dpi)
+    try:
+        out, issues = export_figure(
+            layout, args.output, dpi=args.dpi, allow_missing=args.allow_missing
+        )
+    except ValueError as exc:  # missing or wrongly sized panels: the file would be wrong
+        print(str(exc), file=sys.stderr)
+        return 1
     print(f"wrote {_rel(out)}")
     return max(status, _print_issues(issues))
 
@@ -1107,8 +1113,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("layout")
     p.add_argument("--output-dir")
     p.add_argument("--no-labels", action="store_true")
-    p.add_argument("--outlines", action="store_true", help="outline every panel box")
+    p.add_argument("--outlines", action="store_true", help="outline every panel box in the figure")
     p.add_argument("--page", choices=["a4", "letter"], help="also write preview-page.* on this paper")
+    p.add_argument(
+        "--page-outlines",
+        action="store_true",
+        help="outline the panel boxes in the page view only, leaving the figure itself clean",
+    )
     p.add_argument("--rules", action="store_true", help="draw the alignment rules across the page")
     p.add_argument(
         "--constraints", help="alignment file (default: alignment.yaml next to the layout)"
@@ -1172,6 +1183,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("layout")
     p.add_argument("-o", "--output", required=True, help="e.g. Figure1.pdf or Fig1.tif")
     p.add_argument("--dpi", type=int, help="raster formats; default: journal raster_dpi or style")
+    p.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="draw a panel that has no file as an empty box, for a draft (not for a journal)",
+    )
 
     p = add("palettes", cmd_palettes, "List bundled colour-blind-safe palettes.")
 

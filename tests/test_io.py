@@ -407,3 +407,68 @@ def test_the_figure_file_is_written_once_and_never_overwritten(layout, tmp_path)
     assert scaffold.read_text() == mine  # untouched
 
     assert "A real caption" not in write_figure_scaffold(layout, force=True).read_text()
+
+
+def test_the_figure_file_includes_the_panels_file_beside_it(layout, tmp_path):
+    """The \\input path must point where the .tex really is: next to the layout, not in panels/."""
+    from plotplate.cli import main
+
+    assert main(["latex", str(layout.path)]) == 0
+    scaffold = layout.base_dir / "t-figure.tex"
+    assert "\\input{t.tex}%" in scaffold.read_text()
+    assert (layout.base_dir / "t.tex").exists()  # ... and that is where it was written
+
+    # the bundled copy carries the path the Overleaf project will use
+    _draw_all(layout)
+    assert main(["bundle", str(layout.path), str(tmp_path / "overleaf")]) == 0
+    assert "\\input{figures/t/t.tex}" in (tmp_path / "overleaf" / "t-figure.tex").read_text()
+
+
+def test_outlines_stay_out_of_the_figure_when_only_the_page_view_wants_them(layout, tmp_path):
+    """`--page-outlines` annotates the page view; preview.png stays the figure itself."""
+    import pymupdf
+
+    from plotplate.cli import main
+    from plotplate.render import compose
+
+    _draw_all(layout)
+
+    def drawings(path):  # the panels draw plenty; the boxes are what is counted here
+        with pymupdf.open(path) as doc:
+            return len(doc[0].get_drawings())
+
+    plain, marked = compose(layout), compose(layout, outlines=True)
+    bare, boxed = len(plain[0].get_drawings()), len(marked[0].get_drawings())
+    plain.close()
+    marked.close()
+    assert boxed > bare  # outlines are visible in a count
+
+    assert main(["preview", str(layout.path), "--page", "a4", "--page-outlines"]) == 0
+    assert drawings(layout.base_dir / "preview.pdf") == bare  # the figure is untouched
+    assert drawings(layout.base_dir / "preview-page.pdf") > bare  # the page view has the boxes
+
+    assert main(["preview", str(layout.path), "--outlines"]) == 0  # --outlines still does
+    assert drawings(layout.base_dir / "preview.pdf") == boxed
+
+
+def test_export_refuses_a_hole_but_can_draw_a_draft(layout, tmp_path, capsys):
+    """A missing panel stops the deliverable, as an error; --allow-missing makes a draft."""
+    from plotplate.cli import main
+
+    panel = layout.panel("A")
+    fig, axes = panel.subplots()
+    for ax in axes.values():
+        for one in getattr(ax, "flat", [ax]):
+            one.plot([0, 1], [1, 0])
+    panel.save(fig, formats=["pdf"])  # only A is drawn; B is missing
+
+    assert main(["export", str(layout.path), "-o", str(tmp_path / "fig.pdf")]) == 1
+    message = capsys.readouterr().err
+    assert "[error] panel-missing" in message and "--allow-missing" in message
+    assert not (tmp_path / "fig.pdf").exists()
+
+    assert (
+        main(["export", str(layout.path), "-o", str(tmp_path / "draft.pdf"), "--allow-missing"]) == 0
+    )
+    assert (tmp_path / "draft.pdf").exists()
+    assert "empty box" in capsys.readouterr().out

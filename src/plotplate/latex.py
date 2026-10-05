@@ -95,7 +95,7 @@ def write_figure_tex(
 def write_figure_scaffold(
     layout: Layout,
     out: str | Path | None = None,
-    graphics_prefix: str = "panels/",
+    graphics_prefix: str = "",
     force: bool = False,
 ) -> Path:
     r"""Write ``<name>-figure.tex``: the figure as the manuscript sees it, for the author to edit.
@@ -110,6 +110,10 @@ def write_figure_scaffold(
     It is written once and never again: ``plotplate build`` rewrites the panels beside it and
     leaves this file alone, so a caption written here survives every rebuild. ``force`` writes a
     fresh one, which is how to get the scaffold back after deleting it.
+
+    ``graphics_prefix`` is where the included file sits *as the manuscript sees it*. The copy
+    written next to the layout uses no prefix, so it compiles from the figure folder; the copy
+    ``plotplate bundle`` writes carries the path the Overleaf project will use.
     """
     target = Path(out) if out is not None else layout.base_dir / f"{layout.name}-figure.tex"
     if target.exists() and not force:
@@ -120,6 +124,8 @@ def write_figure_scaffold(
         f"% {layout.name}: this file is yours. Edit the caption, the label, the",
         "% placement ([t], [h!], ...), or wrap it in a starred figure* for a wide one.",
         "% plotplate never overwrites it; it rewrites the panels in the file included below.",
+        "% The path below is relative to whatever LaTeX compiles: adjust it when this file is",
+        "% included from a manuscript in another folder (`plotplate bundle` writes it ready).",
         "\\begin{figure}[tbp]",
         "  \\centering",
         f"  \\input{{{body}}}%",
