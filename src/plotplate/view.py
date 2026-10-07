@@ -10,8 +10,9 @@
   is active and drawn in full, the others can be laid over it as outlines, which is how you
   see what an optimization did.
 
-With ``--edit``, panel boxes can also be dragged and resized on the page, and saved as
-another variant (``layout.custom.yaml``). Two rules make that safe to offer:
+Panel boxes can be dragged and resized on the page, and saved as another variant
+(``layout.custom.yaml``). Nothing is written until the page asks for it, and two rules make
+that safe to offer:
 
 - the server only ever writes ``layout.<name>.yaml`` next to the figure, and never
   ``layout.yaml`` itself -- the file you maintain keeps its comments, its ``mosaic:`` and its
@@ -19,8 +20,8 @@ another variant (``layout.custom.yaml``). Two rules make that safe to offer:
 - what is saved is a resolved layout, the same thing ``plotplate optimize`` writes, through
   the same function, so a box moved by hand and a box moved by the solver land identically.
 
-Anything a drag cannot express -- adding a panel, drawing an annotation -- still belongs in
-the layout file or in a drawing program (``plotplate svg-export`` / ``svg-import``).
+Anything a drag cannot express -- an annotation, a last cosmetic touch -- belongs in the
+layout file, or in a drawing program on ``plotplate export -o touch-up.svg``.
 
 Files are re-read on every request, so a rebuild in another terminal shows up without
 restarting anything. Only the Python standard library is used, so no server framework is
@@ -143,8 +144,7 @@ PAGE = """<!doctype html>
   <ul id="panels"></ul>
   <h2>Checks</h2>
   <div id="issues"></div>
-  <footer id="foot">read-only: edit the layout, run plotplate optimize, or use svg-export /
-    svg-import</footer>
+  <footer id="foot">read-only: edit the layout, or run plotplate optimize</footer>
 </div>
 <div id="stage"><svg id="paper" xmlns="http://www.w3.org/2000/svg"></svg></div>
 <script>
@@ -1060,7 +1060,7 @@ class Viewer:
     Args:
         target: a layout file, or the figure folder holding ``layout.yaml``.
         paper: sheet to show when a layout declares no ``page:`` section.
-        editable: allow the page to save a variant (``plotplate view --edit``).
+        editable: allow the page to save a variant. ``plotplate view`` always does.
     """
 
     target: Path
@@ -1217,13 +1217,13 @@ class Viewer:
             The file that was written.
 
         Raises:
-            PermissionError: the viewer was not started with ``--edit``.
+            PermissionError: this viewer was opened read-only.
             ValueError: the name, a box, a new panel or a rename cannot be used.
         """
         from .config import dump_yaml
 
         if not self.editable:
-            raise PermissionError("this viewer is read-only; start it with `plotplate view --edit`")
+            raise PermissionError("this viewer is read-only; `plotplate view` opens an editor")
         if not VARIANT_NAME.fullmatch(variant):
             raise ValueError(f"{variant!r} is not a variant name (letters, digits, - and _)")
         if variant == BASE:
@@ -1346,7 +1346,7 @@ class Viewer:
         pointer.
 
         Raises:
-            PermissionError: the viewer was not started with ``--edit``.
+            PermissionError: this viewer was opened read-only.
             PackError: the panels are not a grid, or no arrangement fits.
         """
         from dataclasses import replace
@@ -1354,7 +1354,7 @@ class Viewer:
         from .pack import Target, bring_inside, optimize
 
         if not self.editable:
-            raise PermissionError("this viewer is read-only; start it with `plotplate view --edit`")
+            raise PermissionError("this viewer is read-only; `plotplate view` opens an editor")
         layout = self.layout(key)
         edits = {name: _panel_edit(name, value) for name, value in boxes.items()}
         inside = bring_inside(
@@ -1429,7 +1429,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         """Write a variant (``/save``) or re-arrange the edited boxes (``/optimize``).
 
-        Both need ``--edit``: one writes a file, and the other only makes sense as a step
+        Both need an editable viewer: one writes a file, and the other only makes sense as a step
         towards writing one.
         """
         route = urlparse(self.path).path.lstrip("/")

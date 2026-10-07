@@ -15,7 +15,7 @@ not spent on the data.
    given back to the panels;
 3. no panel may change size by more than a factor. By default the optimizer picks that factor
    itself: the smallest one that lets every row fill the width, and never more than
-   :data:`STRETCH_CEILING`. Setting it (``--max-stretch``) is how you ask for less. Panels can
+   :data:`STRETCH_CEILING`. ``optimize: {max_stretch: ...}`` is how you ask for less. Panels can
    also be frozen, kept at their aspect ratio, or given their own limit in the layout.
 
 The solver is Cassowary (``kiwisolver``, a matplotlib dependency), the same one
@@ -26,7 +26,7 @@ recovered space evenly instead of giving it all to one panel.
 
 What this does not do: it never reorders panels, never changes what is drawn inside them,
 and never decides that a panel should be wider *relative to* its neighbour -- that is a
-judgement about content, and it stays yours (``--freeze``, ``--keep-aspect``, or an edited
+judgement about content, and it stays yours (``freeze``, ``keep_aspect``, or an edited
 layout). Axes rectangles move with their panel: the margins that hold tick labels keep
 their width in millimetres, and the extra space goes to the plotting areas.
 """
@@ -164,7 +164,7 @@ def read_grid(boxes: dict[str, Rect], tolerance: float = 1.0) -> Grid:
         if i1 <= i0 or j1 <= j0:
             raise PackError(
                 f"panel {name} has no size at tolerance {tolerance} mm (its edges merge into one "
-                "boundary); lower --tolerance"
+                "boundary); lower optimize.tolerance in the layout"
             )
     clashes = [
         (a, b) for a, b in combinations(sorted(spans), 2) if _cells_overlap(spans[a], spans[b])
@@ -267,6 +267,7 @@ class Target:
     keep_aspect: tuple[str, ...] = ()
     limits: dict[str, float] = field(default_factory=dict)  # per panel, from the layout file
     fill: bool = True  # first grow the panels into the white space beside them
+    tolerance: float = 1.0  # panel edges this close (mm) are one shared boundary
 
     def limit(self, panel: str) -> float:
         """How much this panel may grow: its own limit, or the figure's."""
@@ -286,7 +287,8 @@ class Target:
         raw_stretch = section.get("max_stretch")
         height = section.get("height", "scale")
         return cls(
-            gap=float(section.get("gap", 4.0)),
+            gap=layout.gutter[0],
+            tolerance=float(section.get("tolerance", 1.0)),
             stretch=None
             if raw_stretch is None or str(raw_stretch).lower() == "auto"
             else float(raw_stretch),
@@ -366,7 +368,7 @@ def _infeasible(strips: list[tuple[float, bool]], total: float, target: Target) 
     if factor > stretch + 1e-6:
         return (
             f"the panels would have to grow {factor:.2f}x to fill {total:g} mm "
-            f"(limit {stretch:.2f}x): raise --max-stretch, or lower --gap"
+            f"(limit {stretch:.2f}x): raise optimize.max_stretch, or lower the gutter"
         )
     if factor < 1 / target.shrink - 1e-6:
         return (
@@ -833,7 +835,7 @@ def _choose_stretch(
     Trying is cheap (one linear solve per step), and it is what turns "optimize, read the
     note, optimize again with a bigger limit" into one command. The search stops at
     :data:`STRETCH_CEILING`: beyond that a figure is not being tidied, it is being redrawn,
-    and that is a decision to make on purpose with ``--max-stretch``.
+    and that is a decision to make on purpose with ``optimize: {max_stretch: ...}``.
 
     Raises:
         PackError: no factor up to the ceiling gives an arrangement at all.
@@ -882,7 +884,7 @@ def _notes(report: Report, arranged: Arrangement) -> None:
             Note(
                 "guides-broken",
                 f"{lost} shared axes edges no longer coincide: panels in different rows grew by "
-                "different factors; check `plotplate align` after rebuilding",
+                "different factors; run `plotplate check` after rebuilding",
                 {"lost": lost, "before": report.guides[0], "after": report.guides[1]},
             )
         )
@@ -931,8 +933,8 @@ def _explain(
         return failure
     return PackError(
         f"no arrangement fits with panels growing at most {target.stretch:.2f}x and "
-        f"{target.gap:g} mm gutters. --max-stretch {working:.2f} works (or leave it out, and it "
-        "is chosen for you); a smaller --gap also helps"
+        f"{target.gap:g} mm gutters. optimize.max_stretch {working:.2f} works (or leave it out, "
+        "and it is chosen for you); a smaller gutter also helps"
     )
 
 
@@ -952,6 +954,7 @@ def optimize(
     """
     target = target if target is not None else Target()
     data = layout.resolved()
+    uneven = layout.gutter[0] != layout.gutter[1]
     boxes = {name: spec.box for name, spec in layout.panels.items()}
     automatic = target.stretch is None
     if automatic:
@@ -992,4 +995,13 @@ def optimize(
     )
     report.notes.extend(arranged.notes)
     _notes(report, arranged)
+    if uneven:
+        report.notes.append(
+            Note(
+                "one-gutter",
+                f"the figure declares gutter {list(layout.gutter)}, and the optimizer holds every "
+                f"gutter at one value: all of them are now {target.gap:g} mm",
+                {"gutter": list(layout.gutter)},
+            )
+        )
     return data, report

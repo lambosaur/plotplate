@@ -86,32 +86,17 @@ def test_flattened_page_falls_back_to_detection(tmp_path):
     assert len(result.data["panels"]) == 2
 
 
-def test_cli_from_pdf_rescales_to_journal_width(manuscript, tmp_path):
+def test_cli_detect_rescales_a_pdf_to_a_journal_width(manuscript, tmp_path):
     out = tmp_path / "draft" / "layout.yaml"
-    assert (
-        main(
-            [
-                "from-pdf",
-                str(manuscript),
-                "-o",
-                str(out),
-                "--journal",
-                "nature",
-                "--width",
-                "double",
-                "--fill-gap",
-                "4",
-                "--wireframe",
-                str(tmp_path / "draft" / "wireframe.png"),
-            ]
-        )
-        == 0
-    )
+    assert main(
+        ["detect", str(manuscript), "-o", str(out), "--journal", "nature", "--width", "double"]
+    ) == 0  # fmt: skip
     data = load_yaml(out)
     assert data["area"]["width"] == 183
     assert data["page"]["paper"] == "a4"  # the source page was A4: the sheet is recorded
     assert data["journal"] == "nature"
-    assert (tmp_path / "draft" / "wireframe.png").exists()
+    # the one check that matters is drawn without being asked for: the boxes over the figure
+    assert (tmp_path / "draft" / "layout.wireframe.png").exists()
 
 
 def test_axes_and_guides_are_read_from_vector_panels(tmp_path):

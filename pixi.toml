@@ -59,7 +59,7 @@ lint-yaml = "yamllint ."
 typecheck = "mypy ."
 test = "pytest"
 # Full walkthrough in the git-ignored examples/ folder (what a user gets from `plotplate demo`).
-demo = "plotplate demo figure --dir examples/figure-walkthrough --build --force"
+demo = "plotplate demo --dir examples/figure-walkthrough --build --force"
 # Regenerate the README/docs images in docs/images/ from a fresh demo build.
 docs-figures = "python scripts/make_docs_figures.py"
 

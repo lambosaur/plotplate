@@ -10,8 +10,9 @@ by name: alignment rules (`A.roc`), revisions, reviews. Names are cheap to add w
 code and expensive to recover afterwards, because nothing in a drawn figure says which axes was
 the ROC curve.
 
-`plotplate features <layout> --check` lists every part and fails when any axes is anonymous.
-Run it after a build; it is the mechanical check behind this skill.
+`plotplate check <layout>` reports every anonymous axes (`unnamed-axes`) and every declared
+alignment that did not come out (`align-drift`). Run it after a build; it is the mechanical check
+behind this skill.
 
 ## Rules
 
@@ -53,12 +54,12 @@ Run it after a build; it is the mechanical check behind this skill.
      automatically as `<axes>.legend` and by their axes name.
 
 1. **Keep names stable across revisions.**
-   Renaming a part breaks `alignment.yaml` and the panel files. If a rename is intended, update
+   Renaming a part breaks the layout's axes entries, `alignment.yaml` and the panel files. If a rename is intended, update
    the rules in the same change, and say so in the revision plan.
 
 ## Reviewing existing panel code
 
-1. `plotplate build <layout>` then `plotplate features <layout> --check`.
+1. `plotplate build <layout>`, which ends with `plotplate check`.
 1. For every `ax1`, `ax2`… reported: find where that axes is created and give it a name, in the
    layout when it should also be placed there, otherwise with `set_label`.
 1. For alignment work, check that the parts the user cares about appear in the listing; add

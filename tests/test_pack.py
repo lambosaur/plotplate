@@ -117,7 +117,11 @@ def test_keep_aspect_holds_the_ratio(ragged):
 
 
 def test_cli_writes_the_optimized_variant_next_to_the_input(ragged, tmp_path):
-    assert main(["optimize", str(tmp_path), "--gap", "4", "--max-stretch", "1.3"]) == 0
+    dump_yaml(
+        {**RAGGED, "gutter": 4, "optimize": {"max_stretch": 1.3}},
+        tmp_path / "layout.detected.yaml",
+    )
+    assert main(["optimize", str(tmp_path)]) == 0
     written = tmp_path / "layout.optimized.yaml"
     assert written.exists()
     assert load_yaml(written)["area"]["width"] == 183.0
@@ -146,7 +150,7 @@ def test_the_stretch_is_chosen_when_it_is_not_given(ragged):
 
 def test_a_limit_that_cannot_work_names_one_that_can(ragged):
     """A width you asked for, with a limit that cannot reach it: the message has the number."""
-    with pytest.raises(PackError, match=r"--max-stretch 1\.\d+ works"):
+    with pytest.raises(PackError, match=r"optimize\.max_stretch 1\.\d+ works"):
         optimize(ragged, Target(gap=4.0, stretch=1.0, width=200.0))
 
 
@@ -175,14 +179,15 @@ def test_json_output_is_machine_readable(ragged, capsys):
 
 def test_cli_names_the_variant_it_writes(ragged, tmp_path):
     """`--as tight` writes layout.tight.yaml, so several attempts sit side by side."""
-    assert main(["optimize", str(tmp_path), "--as", "tight", "--max-stretch", "1.3"]) == 0
+    assert main(["optimize", str(tmp_path), "--as", "tight"]) == 0
     assert (tmp_path / "layout.tight.yaml").exists()
     assert "tight" in find_layouts(tmp_path)
 
 
 def test_cli_json_reports_notes_as_records(ragged, tmp_path, capsys):
     """An agent reads the codes; a person reads the same sentence in the table."""
-    assert main(["optimize", str(tmp_path), "--max-stretch", "1.02", "--json", "--dry-run"]) == 0
+    dump_yaml({**RAGGED, "optimize": {"max_stretch": 1.02}}, tmp_path / "layout.detected.yaml")
+    assert main(["optimize", str(tmp_path), "--json", "--dry-run"]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["notes"] and all({"code", "message"} <= set(n) for n in report["notes"])
     assert any(n["code"] == "row-slack" and n["spare_mm"] > 0 for n in report["notes"])
@@ -276,3 +281,12 @@ def test_a_horizontal_guide_holds_a_row_apart():
         pp.Layout({**BAND, "page_guides": {"x": [], "y": [56]}}), Target(gap=4.0, height=120.0)
     )
     assert report.after["A"].bottom <= 56.01 and report.after["C"].top >= 55.99
+
+
+def test_two_different_gutters_become_one_and_the_report_says_so(tmp_path):
+    """The solver holds every gutter at one value; a layout with [4, 2] hears about it."""
+    dump_yaml({**RAGGED, "gutter": [4, 2]}, tmp_path / "layout.detected.yaml")
+    layout = pp.Layout.load(tmp_path / "layout.detected.yaml")
+    _data, report = optimize(layout, Target.from_layout(layout))
+    note = next(n for n in report.notes if n.code == "one-gutter")
+    assert note.as_dict()["gutter"] == [4.0, 2.0] and "4 mm" in note.message

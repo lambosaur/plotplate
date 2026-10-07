@@ -4,7 +4,7 @@ A figure folder holds one layout per idea of how the figure should be arranged::
 
     figures/figure_1/
         layout.yaml             # the one you maintain
-        layout.detected.yaml    # what `plotplate from-pdf` read from the old figure
+        layout.detected.yaml    # what `plotplate detect` read from the old figure
         layout.optimized.yaml   # what `plotplate optimize` made of it
         panels/                 # the drawn panels, shared by all of them
 

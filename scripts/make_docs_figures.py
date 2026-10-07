@@ -305,21 +305,21 @@ def run(force: bool = False) -> None:
     _write_glossary(force)
     with tempfile.TemporaryDirectory() as tmp:
         demo = Path(tmp) / "demo"
-        if main(["demo", "figure", "--dir", str(demo), "--build"]) != 0:
+        if main(["demo", "--dir", str(demo), "--build"]) != 0:
             raise SystemExit("demo build reported errors")
 
         figure = demo / "figures" / "figure_1"
         with pymupdf.open(demo / "legacy" / "manuscript.pdf") as doc:
             doc[0].get_pixmap(dpi=90).save(OUT / "step1-source-page.png")
-        _thumbnail(figure / "detected.wireframe.png", OUT / "step2-draft-layout.png", 900)
-        _thumbnail(figure / "wireframe.png", OUT / "step3-refined-layout.png", 900)
-        _thumbnail(figure / "figure.png", OUT / "step4-final-figure.png", 1100)
-        _thumbnail(figure / "page.png", OUT / "step4-final-page.png", 600)
+        output = figure / "output"
+        _thumbnail(figure / "layout.detected.wireframe.png", OUT / "step2-draft-layout.png", 900)
+        _thumbnail(output / "wireframe.png", OUT / "step3-refined-layout.png", 900)
+        _thumbnail(output / "page.png", OUT / "step4-final-page.png", 600)
 
         _pipeline(
             [
                 ("1. Existing figure", "a PDF page (or screenshot)", OUT / "step1-source-page.png"),
-                ("2. Draft layout", "plotplate from-pdf", OUT / "step2-draft-layout.png"),
+                ("2. Draft layout", "plotplate detect", OUT / "step2-draft-layout.png"),
                 ("3. Refined layout", "layout.yaml (+guides)", OUT / "step3-refined-layout.png"),
                 (
                     "4. Final figure",

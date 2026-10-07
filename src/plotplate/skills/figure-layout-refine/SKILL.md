@@ -1,13 +1,13 @@
 ---
 name: figure-layout-refine
-description: Turn a draft layout (from plotplate from-pdf, plotplate detect or a drawing) into a final layout - grouping, page size, alignment guides and axes rectangles. Use after creating a draft layout, before drawing panels.
+description: Turn a draft layout (from plotplate detect) into a final layout - grouping, page size, alignment guides and axes rectangles. Use after creating a draft layout, before drawing panels.
 ---
 
 # Refining a draft layout
 
-The draft from `plotplate from-pdf` or `plotplate detect` contains panel boxes and, at best, letters.
+The draft from `plotplate detect` contains panel boxes and, at best, letters.
 It does not contain the decisions that make a figure look deliberate: which axes align with which, how much room labels need, what the final page size is.
-The deterministic tools (`tidy`, `fill-gap`, `merge`, `--width`) fix geometry; this skill adds the judgement.
+`detect` and `merge` fix the geometry; this skill adds the judgement.
 
 ## Steps
 
@@ -16,9 +16,10 @@ The deterministic tools (`tidy`, `fill-gap`, `merge`, `--width`) fix geometry; t
    Merge segments belonging to one panel (`plotplate merge draft.yaml S02 S03 --as A`), and rename panels to stable keys when the user wants ids rather than letters (`labels: auto` in the layout).
 
 1. **Set the sheet and the figure size.**
-   `journal:` and `area.width` (a journal width name), then `area.height` from the content, respecting the journal maximum (`plotplate validate` warns).
-   `page:` describes the sheet (`paper`, `margins`, `caption`), and is what lets `plotplate validate` check that the figure fits the text block.
-   Use `plotplate from-pdf --width` to rescale, and `plotplate optimize --gap 4` to regularize the gutters and give the recovered space to the panels (`docs/optimize.md`).
+   `journal:` and `area.width` (a journal width name), then `area.height` from the content, respecting the journal maximum (`plotplate check` warns).
+   `page:` describes the sheet (`paper`, `margins`, `caption`), and is what lets `plotplate check` check that the figure fits the text block.
+   `gutter:` is the millimetres between panels, declared once for the figure.
+   Use `plotplate detect --width` to rescale a draft, and `plotplate optimize` to regularize the gutters and give the recovered space to the panels (`docs/optimize.md`).
 
 1. **Propose alignment guides.**
    Look at the source figure: panels in the same row usually share a baseline, and panels in a column share a left edge.
@@ -39,7 +40,7 @@ The deterministic tools (`tidy`, `fill-gap`, `merge`, `--width`) fix geometry; t
    Too little room shows up as `text-clipped` when panels are drawn.
 
 1. **Show the result.**
-   `plotplate validate` and `plotplate wireframe`, read the wireframe, and present the refined layout to the user with the reasons for each guide.
+   `plotplate check` and `plotplate wireframe`, read the wireframe, and present the refined layout to the user with the reasons for each guide.
    Iterate before any panel is drawn.
 
 ## Keep in mind
@@ -48,3 +49,5 @@ The deterministic tools (`tidy`, `fill-gap`, `merge`, `--width`) fix geometry; t
 - A composed panel (ROC + PRC, clustermap + boxplot) is one panel with several axes entries; name them by content (`roc`, `prc`, `heatmap`, `box`).
 - Library figures (clustermap, Marsilea) need room around their main rectangle for dendrograms, colour strips and legends.
 - Record why a guide exists in a YAML comment; the next revision depends on it.
+- Two axes declared on the same guide are a promise, and `plotplate check` verifies it once the
+  panels are drawn (`align-drift`). No extra file is needed for that.

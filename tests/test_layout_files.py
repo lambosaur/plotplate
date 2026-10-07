@@ -21,7 +21,8 @@ FIGURE = {
     "schema": 1,
     "name": "f",
     "area": {"width": 180, "height": 60},
-    "mosaic": {"rows": ["AB"], "gap": 4},  # kept so that `resolve` has something to resolve
+    "gutter": 4,
+    "mosaic": {"rows": ["AB"]},  # kept so that `resolve` has something to resolve
     "panels": {
         "A": {"box": [0, 0, 88, 60], "margins": [10, 4, 2, 10]},
         "B": {"box": [92, 0, 88, 60], "margins": [10, 4, 2, 10]},
@@ -42,7 +43,7 @@ def figure(tmp_path):
 
 @pytest.mark.parametrize(
     "command",
-    [["resolve"], ["tidy"], ["relabel"], ["merge", "A", "--as", "AB"]],
+    [["resolve"], ["merge", "A", "--as", "AB"]],
 )
 def test_the_layout_in_use_is_never_overwritten(figure, command, capsys):
     """Given the folder (so, layout.yaml), a rewrite refuses and says how to name an output."""
@@ -56,7 +57,7 @@ def test_the_layout_in_use_is_never_overwritten(figure, command, capsys):
 
 @pytest.mark.parametrize(
     "command",
-    [["resolve"], ["tidy"], ["relabel"], ["merge", "A", "--as", "AB"]],
+    [["resolve"], ["merge", "A", "--as", "AB"]],
 )
 def test_a_draft_is_rewritten_in_place(figure, command):
     """A layout.<something>.yaml is a draft: the command that was asked for rewrites it."""
@@ -68,7 +69,8 @@ def test_a_draft_is_rewritten_in_place(figure, command):
 
 
 def test_an_output_can_always_be_named(figure):
-    assert main(["tidy", str(figure), "-o", str(figure / "layout.tight.yaml")]) == 0
+    assert main(["merge", str(figure), "A", "B", "--as", "AB",
+                 "-o", str(figure / "layout.tight.yaml")]) == 0  # fmt: skip
     assert (figure / "layout.tight.yaml").exists()
     assert main(["resolve", str(figure), "-o", str(figure / "layout.yaml")]) == 0
     assert "mosaic" not in load_yaml(figure / "layout.manual.yaml")  # wrote through the link
@@ -119,24 +121,18 @@ def test_output_dir_keeps_the_figure_folder_to_its_sources(tmp_path):
     assert layout.panels_dir == tmp_path / "output" / "panels"
     assert (layout.panels_dir / "A.pdf").exists()
 
-    from plotplate.latex import write_figure_scaffold, write_figure_tex
-    from plotplate.render import page_view, preview
-
-    paths = preview(layout)
-    page = page_view(layout, paper="a4")
-    tex = write_figure_tex(layout)
-    scaffold = write_figure_scaffold(layout)
-
-    assert {p.parent for p in [*paths.values(), *page.values(), tex]} == {tmp_path / "output"}
-    assert sorted(p.name for p in paths.values()) == ["figure.pdf", "figure.png", "figure.svg"]
-    assert sorted(p.name for p in page.values()) == ["page.pdf", "page.png", "page.svg"]
-    assert scaffold.parent == tmp_path  # the file you edit stays with the sources
+    assert main(["build", str(tmp_path)]) == 0
+    written = sorted(p.name for p in (tmp_path / "output").iterdir())
+    assert written == ["f.tex", "page.pdf", "page.png", "page.svg", "panels"]
+    scaffold = tmp_path / "f-figure.tex"
+    assert scaffold.exists()  # the file you edit stays with the sources
     assert "\\input{output/f.tex}" in scaffold.read_text()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["f-figure.tex", "layout.yaml", "output"]
 
 
-def test_the_layout_can_ask_for_the_page_view_on_every_build(tmp_path, capsys):
-    dump_yaml({**FIGURE, "output_dir": "out", "preview": {"page": "a4"}}, tmp_path / "layout.yaml")
+def test_a_layout_that_declares_no_sheet_still_gets_its_page_view(tmp_path, capsys):
+    """Nothing in the file says `page:`, and a4 is the sheet a figure is checked against."""
+    dump_yaml({**FIGURE, "output_dir": "out"}, tmp_path / "layout.yaml")
     layout = pp.Layout.load(tmp_path)
     for name in layout.panels:
         panel = layout.panel(name)
@@ -145,10 +141,10 @@ def test_the_layout_can_ask_for_the_page_view_on_every_build(tmp_path, capsys):
 
     assert main(["build", str(tmp_path)]) == 0
     written = sorted(p.name for p in (tmp_path / "out").iterdir())
-    assert "page.pdf" in written and "page.svg" in written and "figure.png" in written
+    assert "page.pdf" in written and "page.svg" in written and "page.png" in written
 
 
-def test_bundle_lands_in_the_output_folder_by_default(tmp_path, capsys):
+def test_the_upload_folder_lands_in_the_output_folder_by_default(tmp_path, capsys):
     """One folder holds everything a build makes, the Overleaf upload included."""
     dump_yaml({**FIGURE, "output_dir": "output"}, tmp_path / "layout.yaml")
     layout = pp.Layout.load(tmp_path)
@@ -157,11 +153,11 @@ def test_bundle_lands_in_the_output_folder_by_default(tmp_path, capsys):
         fig, _axes = panel.subplots()
         panel.save(fig, formats=["pdf"])
 
-    assert main(["bundle", str(tmp_path)]) == 0
+    assert main(["latex", str(tmp_path)]) == 0
     upload = tmp_path / "output" / "overleaf"
     assert sorted(p.name for p in upload.iterdir()) == ["A.pdf", "B.pdf", "f-figure.tex", "f.tex"]
     assert "output/overleaf" in capsys.readouterr().out
 
     elsewhere = tmp_path / "final"  # ... and a destination can still be named
-    assert main(["bundle", str(tmp_path), str(elsewhere)]) == 0
+    assert main(["latex", str(tmp_path), str(elsewhere)]) == 0
     assert (elsewhere / "f.tex").exists()

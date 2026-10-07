@@ -266,12 +266,13 @@ def preview(
     rules: dict[str, list[float]] | None = None,
     png_dpi: int = 200,
 ) -> dict[str, Path]:
-    """Compose ``figure.pdf``/``figure.png`` (vector, from panel PDFs) and ``figure.svg``.
+    """Compose the figure, cropped, into ``figure.pdf``/``figure.png``/``figure.svg``.
+
+    This is the composer behind :func:`page_view`, :func:`export_figure` and
+    :meth:`plotplate.Panel.context`, which call it with a folder of their own; a build writes
+    the page view instead, so nothing lands in the figure folder unless a caller asks for it.
 
     ``outlines`` draws every panel box, ``highlight`` only the named panel's box (thicker).
-
-    ``figure.svg`` links the panel SVGs (Inkscape-friendly, like a manual Inkscape
-    assembly), so it updates when panels are re-exported.
     """
     out_dir = Path(out_dir) if out_dir is not None else layout.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -305,8 +306,12 @@ def export_figure(
 ) -> tuple[Path, list[Issue]]:
     """Write the final composite figure file (one file, all panels, letters included).
 
+    This is the only command that writes the figure as one cropped file -- for a journal's
+    upload form, for a co-author, or to hand-finish in a drawing program.
+
     The format follows the file extension: ``.pdf`` (vector, fonts embedded), ``.png``,
-    or ``.tif``/``.tiff`` (LZW-compressed, RGB, as PLOS requires). Missing or wrongly
+    ``.tif``/``.tiff`` (LZW-compressed, RGB, as PLOS requires), or ``.svg``, which links the
+    panel SVGs so Inkscape can open it and every panel stays editable. Missing or wrongly
     sized panels are an error, because the file is a deliverable; ``allow_missing`` turns them
     into empty boxes and a warning instead, for a draft to show someone. Returns the path and
     the warnings (the journal's accepted formats, and the holes when any were allowed).
@@ -316,8 +321,8 @@ def export_figure(
     out = Path(out)
     fmt = out.suffix.lower().lstrip(".")
     fmt = "tiff" if fmt == "tif" else fmt
-    if fmt not in {"pdf", "png", "tiff"}:
-        raise ValueError(f"unsupported export format {out.suffix!r}; use .pdf, .png or .tif")
+    if fmt not in {"pdf", "png", "tiff", "svg"}:
+        raise ValueError(f"unsupported export format {out.suffix!r}; use .pdf, .png, .tif or .svg")
     issues: list[Issue] = []
     deliverable = (layout.journal or {}).get("deliverable") or {}
     accepted = [str(f).lower() for f in deliverable.get("formats") or []]
@@ -334,6 +339,8 @@ def export_figure(
         ]
     dpi = dpi or int(deliverable.get("raster_dpi") or layout.style["export"]["dpi"])
     out.parent.mkdir(parents=True, exist_ok=True)
+    if fmt == "svg":
+        return _preview_svg(layout, out, labels=True), issues
     doc = compose(layout, strict=not allow_missing)
     if fmt == "pdf":
         doc.save(out, garbage=3, deflate=True)
@@ -357,11 +364,14 @@ def page_view(
 ) -> dict[str, Path]:
     """Show the figure as it would sit on a printed page: centred, with a caption and text lines.
 
-    The figure files themselves have no margin: margins and the caption belong to the
-    manuscript. This view only puts the figure in that context (``page.pdf/png/svg``).
+    This is what a build leaves to look at (``page.pdf``, ``page.png``, ``page.svg``): the
+    figure at its real size, where a float would put it, with grey bars standing in for the
+    body text. A figure has no margins of its own -- margins and the caption belong to the
+    manuscript -- so this is the only rendering that shows whether it fits the printed sheet.
 
-    ``outlines`` draws the panel boxes **here only**: the page view is a check, while
-    ``figure.png`` beside it is the figure itself and stays clean.
+    ``plotplate export`` writes the figure itself, cropped, when one file is what is needed.
+
+    ``outlines`` draws every panel box, for checking the geometry rather than the content.
     """
     import pymupdf
 
@@ -409,7 +419,7 @@ def page_view(
     pdf_path, png_path = out_dir / "page.pdf", out_dir / "page.png"
     svg_path = out_dir / "page.svg"
     doc.save(pdf_path, garbage=3, deflate=True)
-    page.get_pixmap(dpi=100).save(png_path)
+    page.get_pixmap(dpi=200).save(png_path)
     # Text stays text, as in every other SVG this package writes, so the page view can be
     # opened in a drawing program and read.
     svg_path.write_text(page.get_svg_image(text_as_path=False), encoding="utf-8")
@@ -417,9 +427,34 @@ def page_view(
     return {"pdf": pdf_path, "png": png_path, "svg": svg_path}
 
 
-def _preview_svg(layout: Layout, path: Path, labels: bool) -> Path:
-    from .svg import _LABEL, _layer, _q  # shared Inkscape helpers
+#: Inkscape reads these: a labelled layer is a layer a person can hide, lock and pick in the UI.
+SVG_NS = "http://www.w3.org/2000/svg"
+INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape"
+_LABEL = f"{{{INKSCAPE_NS}}}label"
 
+
+def _q(tag: str) -> str:
+    """One SVG tag name, namespaced."""
+    return f"{{{SVG_NS}}}{tag}"
+
+
+def _layer(parent: ET.Element, label: str) -> ET.Element:
+    """An Inkscape layer: a group a drawing program shows by name."""
+    return ET.SubElement(
+        parent,
+        _q("g"),
+        {
+            "id": label,
+            f"{{{INKSCAPE_NS}}}groupmode": "layer",
+            _LABEL: label,
+        },
+    )
+
+
+def _preview_svg(layout: Layout, path: Path, labels: bool) -> Path:
+    """The figure as one SVG that *links* the panel SVGs, so every panel stays editable."""
+    ET.register_namespace("", SVG_NS)
+    ET.register_namespace("inkscape", INKSCAPE_NS)
     w, h = layout.width, layout.height
     root = ET.Element(
         _q("svg"), {"width": f"{w:g}mm", "height": f"{h:g}mm", "viewBox": f"0 0 {w:g} {h:g}"}

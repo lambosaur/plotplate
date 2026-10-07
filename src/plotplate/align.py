@@ -6,7 +6,11 @@ drawn content including labels, and any reference point registered with ``Panel.
 Because these are page millimetres, edges of different panels can be compared without
 looking at the figure.
 
-``alignment.yaml`` next to the layout declares what must line up::
+Most of this needs no file. Every axes edge the layout declares at the same coordinate is
+already a promise -- that is what a guide is for -- so :func:`drift` reads those promises back
+out of the layout and checks the measurements against them. ``alignment.yaml`` next to the
+layout is for what no declared rectangle can express: a point in data coordinates, a legend, a
+library's own axes. It declares what must line up::
 
     tolerance: 0.3          # mm, default for every rule
     rules:
@@ -18,8 +22,9 @@ looking at the figure.
       - match: mark
         of: [D.zero, E.zero]
 
-Without a constraints file, ``plotplate align`` reports groups of edges that are *nearly* equal:
-those are the ones that look like mistakes in print.
+``plotplate check`` reads both, and :func:`near_misses` reports groups of edges that are
+*nearly* equal -- the ones that look like mistakes in print -- for a layout that declares
+nothing.
 """
 
 from __future__ import annotations
@@ -170,3 +175,67 @@ def rule_lines(features: dict[str, Feature], rules: list[dict[str, Any]]) -> dic
             if value is not None:
                 lines[axis].append(round(value, 3))
     return {axis: sorted(set(values)) for axis, values in lines.items()}
+
+
+def declared(layout: Layout) -> dict[str, dict[str, float]]:
+    """Where the layout says every axes rectangle goes, keyed as the measurements are.
+
+    One entry per axes, or one per cell of a grid (``scatter1``, ``scatter2``, ...), which is
+    how :meth:`plotplate.Panel.axes` names them when it saves the geometry.
+    """
+    wanted: dict[str, dict[str, float]] = {}
+    for panel, spec in layout.panels.items():
+        for name, axes in spec.axes.items():
+            for index, rect in enumerate(axes.rects()):
+                ref = f"{panel}.{name}{index + 1}" if axes.is_grid else f"{panel}.{name}"
+                wanted[ref] = {
+                    "left": rect.left,
+                    "right": rect.right,
+                    "top": rect.top,
+                    "bottom": rect.bottom,
+                }
+    return wanted
+
+
+def drift(layout: Layout, features: dict[str, Feature], tolerance: float = 0.3) -> list[Issue]:
+    """Axes the layout puts on one line, and how far apart they actually came out.
+
+    Two axes declared on the same guide -- or simply at the same number -- are a contract the
+    figure has to keep. matplotlib can still move a spine after the fact: a colorbar takes
+    room, a long tick label pushes the axes in. This is the check that notices, and it needs
+    nothing written down beyond the layout itself.
+    """
+    issues: list[Issue] = []
+    wanted = declared(layout)
+    for match in EDGES:
+        groups: list[tuple[float, list[str]]] = []
+        for ref in sorted(wanted):
+            value = wanted[ref][match]
+            for anchor, members in groups:
+                if abs(value - anchor) <= tolerance:
+                    members.append(ref)
+                    break
+            else:
+                groups.append((value, [ref]))
+        for anchor, members in groups:
+            if len(members) < 2:
+                continue
+            measured = {
+                ref: features[ref].values[match]
+                for ref in members
+                if ref in features and match in features[ref].values
+            }
+            if len(measured) < 2:
+                continue
+            spread = max(measured.values()) - min(measured.values())
+            if spread > tolerance:
+                detail = ", ".join(f"{ref} {value:.2f}" for ref, value in sorted(measured.items()))
+                issues.append(
+                    Issue(
+                        "error",
+                        "align-drift",
+                        f"{match} is declared at {anchor:g} mm for {len(members)} axes, and came "
+                        f"out {spread:.2f} mm apart (tolerance {tolerance}): {detail}",
+                    )
+                )
+    return issues

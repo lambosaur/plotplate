@@ -96,9 +96,13 @@ def test_mapping_overrides_geometry(before, tmp_path):
     assert (tmp_path / "diff.png").exists()
 
 
-def test_relabel_writes_explicit_letters(before, tmp_path):
+def test_explicit_letters_are_a_layout_key(before, tmp_path):
+    """Letters out of reading order are written in the file, not produced by a command."""
     path, _ = before
-    assert main(["relabel", str(path), "-o", str(tmp_path / "labelled.yaml")]) == 0
-    data = load_yaml(tmp_path / "labelled.yaml")
-    assert data["labels"] == "id"
-    assert [data["panels"][k]["label"]["text"] for k in ("roc", "heat")] == ["A", "B"]
+    data = load_yaml(path)
+    data["panels"]["heat"]["label"] = {"text": "A"}
+    data["panels"]["roc"]["label"] = {"text": "B"}
+    dump_yaml(data, tmp_path / "labelled.yaml")
+    layout = pp.Layout.load(tmp_path / "labelled.yaml")
+    assert [layout.panels[k].label for k in ("roc", "heat")] == ["B", "A"]
+    assert layout.validate() == []

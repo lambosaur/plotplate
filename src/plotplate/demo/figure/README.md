@@ -1,7 +1,7 @@
 # plotplate demo: one figure, from a hand-assembled page to a delivered file
 
 A complete, synthetic walkthrough. Nothing here uses real data.
-`plotplate demo figure --dir <folder> --build` copies this folder and runs every step inside it.
+`plotplate demo --dir <folder> --build` copies this folder and runs every step inside it.
 
 ## The story
 
@@ -13,26 +13,32 @@ A complete, synthetic walkthrough. Nothing here uses real data.
 1. **Read it back:** `figures/figure_1/layout.detected.yaml`.
 
    ```sh
-   plotplate from-pdf legacy/manuscript.pdf -o figures/figure_1/layout.detected.yaml \
-       --journal nature --width double --paper a4 --axes --guides \
-       --wireframe figures/figure_1/detected.wireframe.png
+   plotplate detect legacy/manuscript.pdf -o figures/figure_1/layout.detected.yaml \
+       --journal nature --width double
    ```
 
    Exact panel positions, panels named from their letters, the plotting areas inside the vector panels,
    and the sheet the page was. It also reports how much each panel was scaled: fonts printed at 23 % of
-   their size explain why the old figure looks uneven.
+   their size explain why the old figure looks uneven. The boxes it writes are round numbers that own
+   the white space around their content, and
+   `figures/figure_1/layout.detected.wireframe.png` shows them over the page they came from.
 
 1. **Spend the white space it wasted:** `figures/figure_1/layout.optimized.yaml`.
 
-   ```sh
-   plotplate optimize figures/figure_1/layout.detected.yaml --gap 4 --height 168
+   First say what the figure wants, in the draft itself — this is the file you would edit:
+
+   ```yaml
+   gutter: 4
+   optimize: {height: 168}   # also brings it under Nature's 170 mm maximum
    ```
 
-   Gutters of 8.6 to 20.8 mm become 4 mm everywhere, and the space that frees goes to the panels: they
-   cover 77 % of the figure before, 88 % after. Nobody chose how much the panels may grow — the
-   optimizer took the smallest factor that fills every row (1.10x) and says so. `--height 168` also
-   brings the figure under Nature's 170 mm maximum, which the draft exceeded.
-   See `docs/optimize.md` in the plotplate repository.
+   ```sh
+   plotplate optimize figures/figure_1/layout.detected.yaml
+   ```
+
+   The uneven gutters become 4 mm everywhere, and the space that frees goes to the panels. Nobody
+   chose how much the panels may grow — the optimizer took the smallest factor that fills every row
+   and says so. See `docs/optimize.md` in the plotplate repository.
 
 1. **The layout that is maintained:** `figures/figure_1/layout.yaml`.
    Written by hand from those drafts: a round 183 × 150 mm, a mosaic instead of typed boxes, and named
@@ -47,11 +53,14 @@ A complete, synthetic walkthrough. Nothing here uses real data.
    plotplate build figures/figure_1
    ```
 
-1. **Deliver:** the LaTeX snippet `figure_1.tex`, the production file, and a page view.
+   The build writes everything into `figures/figure_1/output/`: the panel files, the figure on its
+   page (`page.png`, which is what you look at), and `figure_1.tex`, which places the panels.
+
+1. **Deliver:** one file for the journal, or a folder for Overleaf.
 
    ```sh
-   plotplate export figures/figure_1 -o figures/figure_1/export/Figure1.pdf
-   plotplate preview figures/figure_1 --page a4
+   plotplate export figures/figure_1 -o figures/figure_1/output/Figure1.pdf
+   plotplate latex figures/figure_1
    ```
 
 ## Look at all of it
@@ -62,9 +71,9 @@ plotplate view figures/figure_1
 
 One page showing the figure on A4, with the layout over it, and the three layouts of this figure
 (`base`, `detected`, `optimized`) to switch between and overlay.
-Add `--edit` to drag the boxes around and save the result as `layout.<name>.yaml`. The panels were drawn for `base`, so
-the other two report `panel-size` — that check is the point: a panel drawn at the wrong size is exactly
-what plotplate exists to prevent. Rebuild against a layout to adopt it.
+Drag the boxes around and save the result as `layout.<name>.yaml`. The panels were drawn for
+`base`, so the other two report `panel-size` — that check is the point: a panel drawn at the wrong
+size is exactly what plotplate exists to prevent. Rebuild against a layout to adopt it.
 
 ## Files
 
@@ -73,7 +82,7 @@ what plotplate exists to prevent. Rebuild against a layout to adopt it.
 | `style.yaml` | project-wide style shared by all figures (named colors) |
 | `legacy/` | the old figure: PDF page, its LaTeX source, the script that made its panels |
 | `figures/figure_1/layout.yaml` | the maintained layout (Nature double column, A4, shared guides) |
-| `figures/figure_1/alignment.yaml` | what must line up across panels, checked by `plotplate align` |
+| `figures/figure_1/output/` | everything a build writes; delete it at any time |
 | `figures/figure_1/make_data.py` | writes the precomputed tables in `data/` |
 | `figures/figure_1/panel_*.py` | Jupytext percent notebooks, one per panel |
 | `figures/figure_1/variants/panel_B_marsilea.py` | panel B drawn with Marsilea instead of seaborn |

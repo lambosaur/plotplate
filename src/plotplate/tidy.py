@@ -1,10 +1,13 @@
-"""Clean up approximate layouts: unify nearly-equal edges, then snap to a step.
+"""Turn a drafted layout into round numbers.
 
-Boxes coming from a screenshot, or drawn by hand in Inkscape, are almost aligned: a
-left edge at 91.8 mm next to one at 92.1 mm. ``tidy`` clusters edge coordinates that are
-within ``tolerance`` of each other, replaces each cluster by its (snapped) mean, and
-rewrites every explicit ``box`` so aligned things are *exactly* aligned.
-Guide references and mosaic-derived boxes are left untouched.
+A detector reports what it measured: a left edge at 91.8 mm next to one at 92.1 mm, and panel
+boxes that hug the ink instead of owning the white space around it. :func:`snap` grows each box
+into the space beside it, then clusters coordinates within ``tolerance`` of each other and
+replaces each cluster by one snapped value -- so things that were nearly aligned become exactly
+aligned, and the few numbers left are the ones the figure is really made of.
+
+Panel boxes, axes rectangles, axes edges written as numbers, guides and page guides all move
+together: snapping boxes alone would push an axes outside its panel.
 """
 
 from __future__ import annotations
@@ -67,30 +70,6 @@ def _axes_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def tidy(data: dict[str, Any], tolerance: float = 1.0, step: float = 0.5) -> dict[str, Any]:
-    """Return a copy of the layout mapping with aligned, snapped boxes.
-
-    Args:
-        data: raw layout mapping.
-        tolerance: edges closer than this (mm) are made identical.
-        step: snapping grid (mm); 0 disables snapping.
-    """
-    data = copy.deepcopy(data)
-    holders = _boxes(data)
-    rects = [Rect.from_list(holder[key]) for holder, key in holders]
-    xs = [v for r in rects for v in (r.left, r.right)]
-    ys = [v for r in rects for v in (r.top, r.bottom)]
-    area, _ = split_area_page(data)
-    for bound, values in ((area.get("width"), xs), (area.get("height"), ys)):
-        if isinstance(bound, int | float):
-            values.extend([0.0, float(bound)])
-    xmap, ymap = _clusters(xs, tolerance, step), _clusters(ys, tolerance, step)
-    for (holder, key), rect in zip(holders, rects, strict=True):
-        new = Rect.from_edges(xmap[rect.left], ymap[rect.top], xmap[rect.right], ymap[rect.bottom])
-        holder[key] = new.to_list()
-    return data
-
-
 def merge_panels(data: dict[str, Any], names: list[str], new_name: str) -> dict[str, Any]:
     """Replace panels ``names`` by one panel ``new_name`` whose box is their union."""
     data = copy.deepcopy(data)
@@ -113,48 +92,6 @@ def merge_panels(data: dict[str, Any], names: list[str], new_name: str) -> dict[
             continue
         merged[key] = value
     data["panels"] = merged
-    return data
-
-
-def fill_gaps(data: dict[str, Any], gap: float) -> dict[str, Any]:
-    """Grow panel boxes until they meet their neighbours ``gap`` mm apart, or the page edge.
-
-    Screenshot detection finds *content* bounding boxes; panel boxes also include the
-    surrounding white space. Each side moves to the midpoint of the gutter to the nearest
-    facing panel (overlapping in the other direction), minus half the gap.
-    """
-    data = copy.deepcopy(data)
-    area, _ = split_area_page(data)
-    width, height = float(area["width"]), float(area["height"])
-    panels = {k: v for k, v in (data.get("panels") or {}).items() if (v or {}).get("box") is not None}
-    rects = {k: Rect.from_list(v["box"]) for k, v in panels.items()}
-
-    def overlaps(a0: float, a1: float, b0: float, b1: float) -> bool:
-        return min(a1, b1) - max(a0, b0) > 0
-
-    for name, r in rects.items():
-        others = [o for k, o in rects.items() if k != name]
-        left_n = [
-            o.right
-            for o in others
-            if o.right <= r.left and overlaps(r.top, r.bottom, o.top, o.bottom)
-        ]
-        right_n = [
-            o.left for o in others if o.left >= r.right and overlaps(r.top, r.bottom, o.top, o.bottom)
-        ]
-        top_n = [
-            o.bottom
-            for o in others
-            if o.bottom <= r.top and overlaps(r.left, r.right, o.left, o.right)
-        ]
-        bottom_n = [
-            o.top for o in others if o.top >= r.bottom and overlaps(r.left, r.right, o.left, o.right)
-        ]
-        left = (max(left_n) + r.left) / 2 + gap / 2 if left_n else 0.0
-        right = (min(right_n) + r.right) / 2 - gap / 2 if right_n else width
-        top = (max(top_n) + r.top) / 2 + gap / 2 if top_n else 0.0
-        bottom = (min(bottom_n) + r.bottom) / 2 - gap / 2 if bottom_n else height
-        panels[name]["box"] = Rect.from_edges(left, top, right, bottom).to_list()
     return data
 
 
@@ -188,4 +125,100 @@ def scale_layout(data: dict[str, Any], width: float) -> dict[str, Any]:
         guides = (data.get("guides") or {}).get(axis) or {}
         for name in guides:
             guides[name] = round(float(guides[name]) * factor, 2)
+    return data
+
+
+def _edge_slots(data: dict[str, Any]) -> tuple[list[tuple[Any, Any]], list[tuple[Any, Any]]]:
+    """Every x and y coordinate of a layout, as ``(container, key)`` pairs that can be rewritten.
+
+    A box contributes its two edges per axis through a small adapter, since it is stored as
+    ``[x, y, w, h]`` rather than as edges.
+    """
+    xs: list[tuple[Any, Any]] = []
+    ys: list[tuple[Any, Any]] = []
+    for holder, key in _boxes(data):
+        xs += [(holder, (key, "left")), (holder, (key, "right"))]
+        ys += [(holder, (key, "top")), (holder, (key, "bottom"))]
+    for axes in _axes_entries(data):
+        if axes.get("ref", "page") != "page":
+            continue
+        for key, bucket in (("left", xs), ("right", xs), ("top", ys), ("bottom", ys)):
+            if isinstance(axes.get(key), int | float):  # a guide reference is a name, not a number
+                bucket.append((axes, key))
+    for axis, bucket in (("x", xs), ("y", ys)):
+        for name in (data.get("guides") or {}).get(axis) or {}:
+            bucket.append(((data["guides"][axis]), name))
+        page_guides = (data.get("page_guides") or {}).get(axis) or []
+        for index in range(len(page_guides)):
+            bucket.append((data["page_guides"][axis], index))
+    return xs, ys
+
+
+def _read(holder: Any, key: Any) -> float:
+    if isinstance(key, tuple):
+        return float(getattr(Rect.from_list(holder[key[0]]), key[1]))
+    return float(holder[key])
+
+
+def _write(holder: Any, key: Any, value: float) -> None:
+    if isinstance(key, tuple):
+        rect = Rect.from_list(holder[key[0]])
+        edges = {"left": rect.left, "top": rect.top, "right": rect.right, "bottom": rect.bottom}
+        edges[key[1]] = value
+        order = ("left", "top", "right", "bottom")
+        holder[key[0]] = Rect.from_edges(*(edges[e] for e in order)).to_list()
+        return
+    holder[key] = round(value, 4)
+
+
+def snap(
+    data: dict[str, Any], tolerance: float = 1.0, gap: float | None = None, step: float = 0.5
+) -> dict[str, Any]:
+    """Return a copy of a drafted layout with its space filled and its coordinates unified.
+
+    Args:
+        data: raw layout mapping, as a detector wrote it.
+        tolerance: coordinates closer than this (mm) are made identical.
+        gap: the gutter to leave between panels; the layout's own ``gutter:`` by default.
+        step: snapping grid (mm); 0 keeps the cluster mean.
+    """
+    from .pack import fill_white_space
+
+    data = copy.deepcopy(data)
+    area, _ = split_area_page(data)
+    width, height = float(area["width"]), float(area["height"])
+    if gap is None:
+        raw = data.get("gutter", 4.0)
+        gap = float(raw if isinstance(raw, int | float) else raw[0])
+
+    panels = {
+        name: entry
+        for name, entry in (data.get("panels") or {}).items()
+        if (entry or {}).get("box") is not None
+    }
+    if panels:
+        grown = fill_white_space(
+            {name: Rect.from_list(entry["box"]) for name, entry in panels.items()},
+            width,
+            height,
+            gap,
+            stretch=float("inf"),
+        )
+        for name, entry in panels.items():
+            entry["box"] = grown[name].to_list()
+
+    xs, ys = _edge_slots(data)
+    maps = {}
+    for axis, slots, bound in (("x", xs, width), ("y", ys, height)):
+        # Read every coordinate first: rewriting one edge of a box recomputes its width, which
+        # moves the other edge by a float hair and would make it unrecognisable afterwards.
+        measured = [(holder, key, _read(holder, key)) for holder, key in slots]
+        maps[axis] = _clusters([value for *_, value in measured] + [0.0, bound], tolerance, step)
+        for holder, key, value in measured:
+            _write(holder, key, maps[axis][value])
+    # The figure's own edges are coordinates too: snapping a box out to 133.5 mm while the area
+    # stays 133.4 mm tall would put it outside the page.
+    section = area_section(data)
+    section["width"] = round(maps["x"][width], 4)
+    section["height"] = round(maps["y"][height], 4)
     return data

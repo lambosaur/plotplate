@@ -1,13 +1,15 @@
 # The maintained layout of figure 1: Nature double column, A4 manuscript. Synthetic data only.
-# Variants of this figure live next to it as layout.<variant>.yaml (see docs/workflow.md):
-#   layout.detected.yaml   what `plotplate from-pdf` read from legacy/manuscript.pdf
+# Variants of this figure live next to it as layout.<variant>.yaml (see docs/layout.md):
+#   layout.detected.yaml   what `plotplate detect` read from legacy/manuscript.pdf
 #   layout.optimized.yaml  what `plotplate optimize` made of that draft
 # `plotplate view .` shows all of them, and lets you lay one over another.
 schema: 1
 name: figure_1
 journal: nature
+output_dir: output  # everything a build writes goes here, and nothing else does
+gutter: 4  # millimetres between panels: used to compute the boxes, and held by the optimizer
 style_files: [../../style.yaml]
-# The sheet this figure is meant for; `plotplate validate` checks that it fits.
+# The sheet this figure is meant for; `plotplate check` checks that it fits.
 # Nature-like margins: the text block is then exactly the 183 mm double-column width.
 page: {paper: a4, margins: {left: 13.5, right: 13.5, top: 25, bottom: 25}, caption: 25}
 # The figure's own box: everything below is in millimetres from its top-left corner.
@@ -26,7 +28,6 @@ guides:
 mosaic:
   rows: [AB, CC, DE]
   heights: [55, 42, 45]
-  gap: [4, 4]
 panels:
   A:  # ROC + PRC side by side: one panel, two axes
     axes:

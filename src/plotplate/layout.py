@@ -7,10 +7,11 @@ A layout file (YAML) looks like::
     journal: nature            # bundled preset name or path to a preset YAML
     style_files: [../style.yaml]
     style: {font: {size: 7}}   # inline overrides, applied last
+    code_dir: code             # where your panel scripts are; default ".", beside the layout
     output_dir: output         # where builds write; default ".", the layout's own folder
-    preview: {page: a4}        # also write the page view on every build
     page: {paper: a4, margins: 25, caption: 25}   # the sheet the figure is printed on
     area: {width: double, height: 150}   # the figure itself: mm, or a journal width name
+    gutter: 4                  # whitespace between panels (mm), or [horizontal, vertical]
     guides:                    # named alignment lines an axes can be placed against (mm)
       x: {plots_left: 12}
       y: {row1_bottom: 55}
@@ -19,7 +20,6 @@ A layout file (YAML) looks like::
       y: [62]
     mosaic:                    # optional shorthand to compute panel boxes
       rows: ["AAB", "CDD"]
-      gap: [4, 4]              # [horizontal, vertical] mm
     panels:
       A:
         axes:
@@ -30,7 +30,8 @@ A layout file (YAML) looks like::
 
 Axes edges accept a number (mm) or a guide name with an optional offset
 (``plots_left``, ``row1_bottom-2.5``). Numbers are page coordinates unless the axes entry
-sets ``ref: panel``. See ``docs/layout-spec.md`` for the full reference.
+sets ``ref: panel``. :mod:`plotplate.schema` lists every key a layout may hold, and
+``docs/layout.md`` is the reference.
 """
 
 from __future__ import annotations
@@ -55,6 +56,7 @@ _GUIDE_REF = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*(?:([+-])\s*([0-9.]+))?\s*$")
 #: Sheet sizes (mm) usable in ``page.paper``.
 PAPERS: dict[str, tuple[float, float]] = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
 DEFAULT_MARGIN_MM = 25.0
+DEFAULT_GUTTER_MM = 4.0
 
 
 def split_area_page(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
@@ -89,6 +91,15 @@ def area_section(data: dict[str, Any]) -> dict[str, Any]:
         data["area"] = {}
     section: dict[str, Any] = data["area"]
     return section
+
+
+def _label_mode(data: dict[str, Any]) -> str:
+    """``labels:`` as one of ``id`` (the key is the letter), ``auto`` (reading order), ``none``."""
+    raw = data.get("labels", "id")
+    if raw is False:
+        return "none"
+    mode = str(raw).lower()
+    return mode if mode in {"id", "auto", "none"} else "id"
 
 
 def sheet_for(paper: str | None, width: float | None = None) -> dict[str, Any]:
@@ -203,6 +214,11 @@ class Layout:
         schema = data.get("schema", SCHEMA_VERSION)
         if schema != SCHEMA_VERSION:
             raise ValueError(f"Unsupported layout schema {schema!r}; expected {SCHEMA_VERSION}")
+        # A key plotplate cannot read is a mistake, and the earliest message is the clearest one:
+        # refusing here means a misspelling never looks like a feature that does not work.
+        broken = [message for level, _, message in self._key_reports() if level == "error"]
+        if broken:
+            raise ValueError("\n  ".join(["this layout has keys plotplate cannot read:", *broken]))
 
         self.name: str = str(data.get("name") or (path.stem if path else "figure"))
         self.journal: dict[str, Any] | None = (
@@ -287,6 +303,44 @@ class Layout:
     def panels_dir(self) -> Path:
         """Where panel files are written: ``<output dir>/panels``."""
         return self.output_dir / "panels"
+
+    @property
+    def code_dir(self) -> Path:
+        """Where the panel scripts are: ``code_dir:`` in the layout, its own folder by default.
+
+        ``plotplate build`` looks here for ``panel_<name>*.py``, and a panel's ``source:`` is
+        resolved against it, so a figure folder can keep its code in one place
+        (``code_dir: code``) and still be found. Jupytext percent-format ``.py`` files run as
+        they are; ``.ipynb`` is not executed.
+        """
+        return self.base_dir / str(self.raw.get("code_dir") or ".")
+
+    @property
+    def gutter(self) -> tuple[float, float]:
+        """The whitespace between panels, ``(horizontal, vertical)`` in mm.
+
+        Declared once for the figure -- ``gutter: 4`` or ``gutter: [4, 2]`` -- and read by
+        everything that places panels next to each other: the mosaic that computes their boxes
+        and the optimizer that re-packs them. A journal preset may carry a house default in
+        ``page.gutter``. ``mosaic.gap`` and ``optimize.gap`` were the older names for the same
+        number; both are still read, and ``plotplate check`` names the replacement.
+        """
+        raw = self.raw.get("gutter")
+        if raw is None:
+            raw = (self.raw.get("mosaic") or {}).get("gap")
+        if raw is None:
+            raw = (self.raw.get("optimize") or {}).get("gap")
+        if raw is None:
+            raw = ((self.journal or {}).get("page") or {}).get("gutter", DEFAULT_GUTTER_MM)
+        if isinstance(raw, int | float):
+            return (float(raw), float(raw))
+        horizontal, vertical = raw
+        return (float(horizontal), float(vertical))
+
+    @property
+    def page_outlines(self) -> bool:
+        """Whether the page view outlines every panel box (``page: {outlines: true}``)."""
+        return bool((self.sheet or {}).get("outlines", False))
 
     @property
     def colors(self) -> dict[str, str]:
@@ -379,8 +433,7 @@ class Layout:
         ncols = len(rows[0])
         if any(len(r) != ncols for r in rows):
             raise ValueError("mosaic.rows must all have the same length")
-        gap = mosaic.get("gap", [0.0, 0.0])
-        hgap, vgap = (gap, gap) if isinstance(gap, int | float) else gap
+        hgap, vgap = self.gutter
         wr = mosaic.get("widths") or [1.0] * ncols
         hr = mosaic.get("heights") or [1.0] * len(rows)
         col_w = [(self.width - hgap * (ncols - 1)) * r / sum(wr) for r in wr]
@@ -423,7 +476,7 @@ class Layout:
                 raise ValueError(f"Panel {name!r} has no box, constraints or mosaic cell")
 
             label_raw = raw.get("label", {})
-            if label_raw is False:
+            if label_raw is False or _label_mode(data) == "none":
                 label = None
                 offset = (0.0, 0.0)
             else:
@@ -466,10 +519,8 @@ class Layout:
         be renamed to re-letter a figure. With ``labels: auto`` the key is a stable id
         (e.g. ``roc_prc``) and letters follow the reading order of the boxes.
         """
-        mode = str(data.get("labels", "id")).lower()
-        if mode not in {"id", "auto"}:
-            raise ValueError(f"labels must be 'id' or 'auto', got {mode!r}")
-        if mode == "id":
+        mode = _label_mode(data)
+        if mode in {"id", "none"}:
             return {}
         boxes = {}
         for name, raw in raw_panels.items():
@@ -552,6 +603,8 @@ class Layout:
             sheet, assumed = sheet_for(paper, self.width), True
         raw_paper = sheet.get("paper", "a4")
         if isinstance(raw_paper, str):
+            if raw_paper.lower() == "none":  # `page: {paper: none}`: there is no sheet
+                return None
             size = PAPERS.get(raw_paper.lower())
             name = raw_paper.lower()
         else:
@@ -653,9 +706,24 @@ class Layout:
             )
         ]
 
+    def _key_reports(self) -> list[tuple[str, str, str]]:
+        """What :mod:`plotplate.schema` makes of this file's keys."""
+        from .schema import issues as key_issues
+
+        return key_issues(self.raw)
+
+    def _schema_issues(self) -> list[Issue]:
+        """Keys that moved. The ones plotplate cannot read at all stopped the load already."""
+        return [Issue(level, code, message) for level, code, message in self._key_reports()]
+
     def validate(self) -> list[Issue]:
-        """Geometry sanity checks that need no panel files."""
-        issues = self._journal_issues() + self._sheet_issues() + self._constraint_issues()
+        """Geometry sanity checks, and the keys of the file itself, with no panel files needed."""
+        issues = (
+            self._schema_issues()
+            + self._journal_issues()
+            + self._sheet_issues()
+            + self._constraint_issues()
+        )
         names = list(self.panels)
         for i, name in enumerate(names):
             spec = self.panels[name]

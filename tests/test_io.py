@@ -17,55 +17,34 @@ from plotplate.latex import (
     write_figure_tex,
 )
 from plotplate.render import preview, wireframe
-from plotplate.svg import export_svg, import_svg
-from plotplate.tidy import fill_gaps, merge_panels, tidy
+from plotplate.tidy import merge_panels, snap
 from plotplate.variants import find_layouts
 
 
-def test_svg_roundtrip_keeps_boxes(layout, tmp_path):
-    svg = export_svg(layout, tmp_path / "l.svg")
-    data, issues = import_svg(svg, layout.raw)
-    assert not [i for i in issues if i.level != "info"]
-    pp.config.dump_yaml(data, tmp_path / "again.yaml")  # plain types only
-    again = pp.Layout.load(tmp_path / "again.yaml")
-    for name, spec in layout.panels.items():
-        assert again.panels[name].box.to_list() == spec.box.to_list()
-        for ax_name, ax in spec.axes.items():
-            assert again.panels[name].axes[ax_name].region.to_list() == ax.region.to_list()
-    assert again.panels["A"].axes["grid"].ncols == 2  # non-geometric settings survive
-
-
-def test_svg_import_handles_transforms_and_units(tmp_path):
-    svg = tmp_path / "drawn.svg"
-    svg.write_text(
-        """<svg xmlns="http://www.w3.org/2000/svg"
-     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-     width="100mm" height="50mm" viewBox="0 0 400 200">
-  <g inkscape:groupmode="layer" inkscape:label="panels" transform="translate(20,0)">
-    <rect inkscape:label="A" x="0" y="0" width="160" height="200"/>
-    <g transform="matrix(1,0,0,1,200,0)">
-      <rect inkscape:label="B" x="0" y="0" width="160" height="100"/>
-    </g>
-  </g>
-</svg>"""
-    )
-    data, _ = import_svg(svg)
-    assert data["area"] == {"width": 100.0, "height": 50.0}
-    assert data["panels"]["A"]["box"] == [5.0, 0.0, 40.0, 50.0]
-    assert data["panels"]["B"]["box"] == [55.0, 0.0, 40.0, 25.0]
-
-
-def test_tidy_aligns_and_snaps():
+def test_snap_rounds_a_draft_and_keeps_axes_inside_their_panel():
+    """What a detector measured becomes a few round numbers -- guides and axes included."""
     data = {
-        "page": {"width": 100, "height": 50},
-        "panels": {"A": {"box": [0.2, 0.1, 47.8, 49.7]}, "B": {"box": [52.1, 0.4, 47.7, 20.2]}},
+        "area": {"width": 100, "height": 50},
+        "gutter": 4,
+        "guides": {"x": {"left_axis": 10.2}, "y": {}},
+        "panels": {
+            "A": {
+                "box": [0.2, 0.1, 47.8, 49.7],
+                "axes": {"main": {"left": 10.1, "top": 2.2, "right": 44.9, "bottom": 44.8}},
+            },
+            "B": {"box": [52.1, 0.4, 47.7, 20.2]},
+        },
     }
-    out = tidy(data, tolerance=1.0, step=0.5)
+    out = snap(data, tolerance=1.0)
     assert out["panels"]["A"]["box"] == [0.0, 0.0, 48.0, 50.0]
-    assert out["panels"]["B"]["box"] == [52.0, 0.0, 48.0, 20.5]
+    assert out["panels"]["B"]["box"] == [52.0, 0.0, 48.0, 50.0]  # grown into the space below
+    axes = out["panels"]["A"]["axes"]["main"]
+    assert (axes["left"], axes["right"]) == (10.0, 45.0)  # moved with the boxes, not left behind
+    assert out["guides"]["x"]["left_axis"] == 10.0  # ... and so did the guide they share
+    assert pp.Layout(out).validate() == []  # nothing ended up outside its panel
 
 
-def test_merge_and_fill_gaps():
+def test_merge_panels_unions_their_boxes():
     data = {
         "page": {"width": 100, "height": 50},
         "panels": {
@@ -77,7 +56,7 @@ def test_merge_and_fill_gaps():
     merged = merge_panels(data, ["S1", "S2"], "A")
     assert list(merged["panels"]) == ["A", "S3"]
     assert merged["panels"]["A"]["box"] == [5, 5, 40, 30]
-    filled = fill_gaps(merged, gap=4)
+    filled = snap(merged, tolerance=0.1, gap=4, step=0)
     assert filled["panels"]["A"]["box"] == [0.0, 0.0, 50.5, 50.0]
     assert filled["panels"]["S3"]["box"] == [54.5, 0.0, 45.5, 50.0]
 
@@ -146,23 +125,18 @@ def test_latex_matches_preview(layout, tmp_path):
     assert (np.abs(a - b) > 64).mean() < 0.005
 
 
-def test_cli_build_check_bundle(layout, tmp_path, capsys):
+def test_cli_check_and_latex(layout, tmp_path, capsys):
     from plotplate.cli import main
 
     _draw_all(layout)
     assert main(["check", str(layout.path)]) == 0
-    from plotplate.render import preview
-
-    preview(layout)  # the composed figure, which the bundle carries for looking at
-    assert main(["bundle", str(layout.path), str(tmp_path / "overleaf")]) == 0
+    assert main(["latex", str(layout.path), str(tmp_path / "overleaf")]) == 0
     tex = (tmp_path / "overleaf" / "t.tex").read_text()
     assert "figures/t/A.pdf" in tex
     assert (tmp_path / "overleaf" / "B.pdf").exists()
-    assert (tmp_path / "overleaf" / "t.pdf").exists()  # ... as one file, for a co-author
-    assert "makeatletter" not in tex  # the bundled file stays the simplest thing that works
+    assert "makeatletter" not in tex  # the uploaded file stays the simplest thing that works
     out = capsys.readouterr().out
     assert "\\input{figures/t/t-figure.tex}" in out  # the one line the manuscript needs
-    assert "\\includegraphics{figures/t/t.pdf}" in out  # ... or this one, once hand-finished
 
     # the half the author owns: the figure environment, the caption, the label
     scaffold = (tmp_path / "overleaf" / "t-figure.tex").read_text()
@@ -200,41 +174,20 @@ def test_demo_copy_and_build(tmp_path):
     from plotplate.cli import main
 
     dest = tmp_path / "demo"
-    assert main(["demo"]) == 0  # lists the cases
-    assert main(["demo", "nope", "--dir", str(dest)]) == 1  # unknown case
-    assert main(["demo", "figure", "--dir", str(dest)]) == 0
+    assert main(["demo", "--dir", str(dest)]) == 0
     figure = dest / "figures" / "figure_1"
     assert (dest / "legacy" / "manuscript.pdf").exists()
     assert (figure / "layout.yaml").exists()
-    assert main(["demo", "figure", "--dir", str(dest)]) == 1  # refuses a non-empty folder
+    assert main(["demo", "--dir", str(dest)]) == 1  # refuses a non-empty folder
     pytest.importorskip("seaborn")
     pytest.importorskip("pyarrow")
-    assert main(["demo", "figure", "--dir", str(dest), "--build", "--force"]) == 0
+    assert main(["demo", "--dir", str(dest), "--build", "--force"]) == 0
     # the three layouts of the walkthrough: read back, optimized, and the maintained one
     assert set(find_layouts(figure)) == {"base", "detected", "optimized"}
     assert load_yaml(figure / "layout.optimized.yaml")["area"] == {"width": 183.0, "height": 168.0}
-    assert (figure / "export" / "Figure1.pdf").exists()
-    assert (figure / "page.png").exists()
-
-
-def test_svg_import_illustrator_style_ids(tmp_path):
-    svg = tmp_path / "illustrator.svg"
-    svg.write_text(
-        """<svg xmlns="http://www.w3.org/2000/svg"
-     width="183mm" height="100mm" viewBox="0 0 518.74 283.46">
-  <g id="panels">
-    <rect id="A" x="0" y="0" width="255" height="283.46"/>
-    <rect id="B" x="263.74" y="0" width="255" height="283.46"/>
-    <rect id="rect12" x="1" y="1" width="2" height="2"/>
-  </g>
-  <g id="axes"><rect id="A_x2F_roc_1_" x="28.35" y="14.17" width="200" height="200"/></g>
-</svg>"""
-    )
-    data, issues = import_svg(svg)
-    assert list(data["panels"]) == ["A", "B"]
-    assert data["panels"]["B"]["box"][0] == pytest.approx(93.04, abs=0.01)
-    assert data["panels"]["A"]["axes"]["roc"]["box"][:2] == pytest.approx([10.0, 5.0], abs=0.01)
-    assert [i.code for i in issues] == ["svg-unlabelled"]
+    assert (figure / "output" / "Figure1.pdf").exists()
+    assert (figure / "output" / "page.png").exists()
+    assert not (figure / "figure.pdf").exists()  # one folder holds everything generated
 
 
 def test_awkward_arrangements_are_read_back_and_refused_by_the_optimizer(tmp_path):
@@ -246,7 +199,7 @@ def test_awkward_arrangements_are_read_back_and_refused_by_the_optimizer(tmp_pat
 
     pdf = build(tmp_path / "awkward.pdf")
     out = tmp_path / "layout.detected.yaml"
-    assert main(["from-pdf", str(pdf), "-o", str(out), "--axes", "--guides"]) == 0
+    assert main(["detect", str(pdf), "-o", str(out)]) == 0
     data = load_yaml(out)
     assert len(data["panels"]) == 7  # inset merged into its panel, pinwheel recovered
     assert data["page"]["paper"] == "a4"  # a figure-only PDF: the sheet asked for is recorded
@@ -272,52 +225,6 @@ def test_doctor_reports_the_current_environment(capsys):
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
     assert "versions agree" in out and "fonts:" in out
-
-
-def test_svg_import_survives_a_plain_svg_save(layout, tmp_path):
-    """Inkscape's Plain SVG drops inkscape:label; the ids plotplate wrote still name the panels."""
-    import re
-
-    svg = export_svg(layout, tmp_path / "l.svg")
-    stripped = re.sub(r'\s+inkscape:label="[^"]*"', "", svg.read_text(encoding="utf-8"))
-    plain = tmp_path / "plain.svg"
-    plain.write_text(stripped, encoding="utf-8")
-
-    data, issues = import_svg(plain, layout.raw)
-    assert set(data["panels"]) == set(layout.panels)  # not "panel-A", and nothing lost
-    assert data["panels"]["A"]["axes"]["roc"]["box"] == pytest.approx(
-        layout.panels["A"].axes["roc"].region.to_list(), abs=0.01
-    )
-    assert [i.code for i in issues] == []
-
-
-def test_svg_import_keeps_axes_names_that_repeat_across_panels(tmp_path):
-    """Axes names are per-panel: two panels may both have a `roc`, and a panel name may hyphenate."""
-    import re
-
-    data = {
-        "schema": 1,
-        "name": "t",
-        "area": {"width": 180, "height": 60},
-        "panels": {
-            "A": {"box": [0, 0, 88, 60], "axes": {"roc": {"box": [10, 5, 70, 45]}}},
-            "A-zoom": {"box": [92, 0, 88, 60], "margins": [10, 5, 8, 10]},
-        },
-    }
-    path = tmp_path / "layout.yaml"
-    pp.config.dump_yaml(data, path)
-    layout = pp.Layout.load(path)
-
-    svg = export_svg(layout, tmp_path / "l.svg")
-    plain = tmp_path / "plain.svg"
-    plain.write_text(
-        re.sub(r'\s+inkscape:label="[^"]*"', "", svg.read_text(encoding="utf-8")),
-        encoding="utf-8",
-    )
-    updated, issues = import_svg(plain, layout.raw)
-
-    assert set(updated["panels"]) == {"A", "A-zoom"}  # "A-zoom/main" did not become "A/zoom-main"
-    assert [i.code for i in issues] == []
 
 
 def test_panel_letters_take_no_space_and_follow_the_style(layout, tmp_path):
@@ -409,27 +316,30 @@ def test_the_figure_file_is_written_once_and_never_overwritten(layout, tmp_path)
     assert "A real caption" not in write_figure_scaffold(layout, force=True).read_text()
 
 
-def test_the_figure_file_includes_the_panels_file_beside_it(layout, tmp_path):
-    """The \\input path must point where the .tex really is: next to the layout, not in panels/."""
+def test_the_caption_you_wrote_is_the_caption_that_is_uploaded(layout, tmp_path):
+    """`plotplate latex` copies the author's figure file; only the \\input path is rewritten."""
     from plotplate.cli import main
+    from plotplate.latex import write_figure_scaffold, write_figure_tex
 
-    assert main(["latex", str(layout.path)]) == 0
-    scaffold = layout.base_dir / "t-figure.tex"
-    assert "\\input{t.tex}%" in scaffold.read_text()
-    assert (layout.base_dir / "t.tex").exists()  # ... and that is where it was written
+    write_figure_tex(layout)  # as a build does
+    scaffold = write_figure_scaffold(layout)
+    assert "\\input{t.tex}%" in scaffold.read_text()  # the .tex really is next to the layout
+    assert (layout.base_dir / "t.tex").exists()
 
-    # the bundled copy carries the path the Overleaf project will use
+    scaffold.write_text(scaffold.read_text().replace("\\caption{...}", "\\caption{A real caption.}"))
     _draw_all(layout)
-    assert main(["bundle", str(layout.path), str(tmp_path / "overleaf")]) == 0
-    assert "\\input{figures/t/t.tex}" in (tmp_path / "overleaf" / "t-figure.tex").read_text()
+    assert main(["latex", str(layout.path), str(tmp_path / "overleaf")]) == 0
+    uploaded = (tmp_path / "overleaf" / "t-figure.tex").read_text()
+    assert "A real caption." in uploaded  # ... and it travelled
+    assert "\\input{figures/t/t.tex}" in uploaded  # with the path the Overleaf project uses
 
 
-def test_outlines_stay_out_of_the_figure_when_only_the_page_view_wants_them(layout, tmp_path):
-    """`--page-outlines` annotates the page view; figure.png stays the figure itself."""
+def test_a_build_writes_the_page_view_and_the_layout_asks_for_the_outlines(layout, tmp_path):
+    """`page: {outlines: true}` annotates the page view; export writes the figure itself."""
     import pymupdf
 
     from plotplate.cli import main
-    from plotplate.render import compose
+    from plotplate.render import compose, export_figure
 
     _draw_all(layout)
 
@@ -443,12 +353,30 @@ def test_outlines_stay_out_of_the_figure_when_only_the_page_view_wants_them(layo
     marked.close()
     assert boxed > bare  # outlines are visible in a count
 
-    assert main(["preview", str(layout.path), "--page", "a4", "--page-outlines"]) == 0
-    assert drawings(layout.output_dir / "figure.pdf") == bare  # the figure is untouched
-    assert drawings(layout.output_dir / "page.pdf") > bare  # the page view has the boxes
+    assert main(["build", str(layout.path)]) == 0
+    assert drawings(layout.output_dir / "page.pdf") >= bare
+    assert not (layout.output_dir / "figure.pdf").exists()  # one rendering, not two
+    export_figure(layout, tmp_path / "one.pdf")
+    assert drawings(tmp_path / "one.pdf") == bare  # the figure itself stays clean
 
-    assert main(["preview", str(layout.path), "--outlines"]) == 0  # --outlines still does
-    assert drawings(layout.output_dir / "figure.pdf") == boxed
+    layout.raw["page"] = {**(layout.sheet or {}), "outlines": True}
+    layout.save()
+    assert main(["build", str(layout.path)]) == 0
+    assert drawings(layout.output_dir / "page.pdf") > bare
+
+
+def test_export_writes_one_file_in_the_format_the_name_asks_for(layout, tmp_path):
+    """The one cropped file: for a journal, a co-author, or a last touch in a drawing program."""
+    from plotplate.render import export_figure
+
+    _draw_all(layout)
+    pdf, _ = export_figure(layout, tmp_path / "Figure1.pdf")
+    assert pdf.exists()
+    svg, _ = export_figure(layout, tmp_path / "touch-up.svg")
+    text = svg.read_text()
+    assert "<image" in text and "A.svg" in text  # links the panels, so each one stays editable
+    with pytest.raises(ValueError, match="unsupported export format"):
+        export_figure(layout, tmp_path / "Figure1.eps")
 
 
 def test_export_refuses_a_hole_but_can_draw_a_draft(layout, tmp_path, capsys):

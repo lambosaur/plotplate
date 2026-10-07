@@ -1,4 +1,4 @@
-"""``plotplate`` command line: layout conversion, previews, LaTeX, and checks."""
+"""``plotplate`` command line: four commands for a figure, and a few for everything else."""
 
 from __future__ import annotations
 
@@ -151,22 +151,21 @@ def cmd_new(args: argparse.Namespace) -> int:
     rows = [r.strip() for r in args.mosaic.split("/")]
     data: dict[str, Any] = {
         "schema": 1,
-        "name": args.name or out.parent.name,
+        "name": out.parent.name,
         "journal": args.journal,
     }
-    sheet = sheet_for(args.paper)
-    if sheet:
-        data["page"] = sheet  # the sheet; `area` below is the figure itself
+    data["page"] = sheet_for("a4")  # the sheet; `area` below is the figure itself
     data["area"] = {"width": _number_or_name(args.width), "height": args.height}
+    data["gutter"] = 4
     data["guides"] = {"x": {}, "y": {}}
-    data["mosaic"] = {"rows": rows, "gap": [args.gap, args.gap]}
+    data["mosaic"] = {"rows": rows}
     data["panels"] = {}
     dump_yaml(data, out)
     layout = Layout.load(out)
-    if sheet:  # the journal width is a number now, so the margins can be made to fit it
-        data["page"] = sheet_for(args.paper, layout.width)
-        dump_yaml(data, out)
-        layout = Layout.load(out)
+    # The journal width is a number now, so the margins can be made to fit it.
+    data["page"] = sheet_for("a4", layout.width)
+    dump_yaml(data, out)
+    layout = Layout.load(out)
     print(f"wrote {_rel(out)}: {len(layout.panels)} panels on {layout.width} x {layout.height} mm")
     return _print_issues(layout.validate())
 
@@ -176,12 +175,6 @@ def _number_or_name(value: str) -> float | str:
         return float(value)
     except ValueError:
         return value
-
-
-def cmd_validate(args: argparse.Namespace) -> int:
-    layout = Layout.load(args.layout)
-    print(f"{layout.name}: {layout.width} x {layout.height} mm, panels {list(layout.panels)}")
-    return _print_issues(layout.validate())
 
 
 def _writable(args: argparse.Namespace, source: Path) -> Path | None:
@@ -216,57 +209,100 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_svg_export(args: argparse.Namespace) -> int:
-    from .svg import export_svg
+PDF_SUFFIXES = {".pdf"}
 
-    layout = Layout.load(args.layout)
-    out = export_svg(
-        layout, args.output or Path(args.layout).with_suffix(".svg"), background=args.background
+
+def _detect_from_pdf(args: argparse.Namespace) -> tuple[dict[str, Any], Any] | None:
+    """Read a figure out of a PDF page: placed graphics if there are any, gutters otherwise."""
+    from .pdfimport import layout_from_pdf
+
+    result = layout_from_pdf(
+        args.input,
+        args.page,
+        name=Path(args.input).stem,
+        use_letters=True,
+        detect=False,
+        axes=True,  # the axes rectangles are what the optimizer and `check` align against
+        guides=0.5,  # ... and shared edges become named guides
+        paper="a4",
     )
-    print(
-        f"wrote {_rel(out)} (edit rectangles in layers 'panels'/'axes', then `plotplate svg-import`)"
-    )
-    return 0
+    data = result.data
+    if args.journal:
+        data["journal"] = args.journal
+    if args.width is not None:
+        scaled = _retarget_width(args, data, result.paper)
+        if scaled is None:
+            return None
+        data = scaled
+    return data, result
 
 
-def cmd_svg_import(args: argparse.Namespace) -> int:
-    from .svg import import_svg
+def _detect_from_image(args: argparse.Namespace) -> tuple[dict[str, Any], Any]:
+    """Read a figure out of a raster image: blank gutters cut it into segments."""
+    from .detect import draft_layout
 
-    target = _drafted_layout_path(args, Path(args.svg).parent, update=True)
-    if target is None:
-        return 1
-    base = load_yaml(target) if target.exists() else None
-    data, issues = import_svg(args.svg, base)
-    dump_yaml(data, target)
-    print(f"wrote {_rel(target)}")
-    status = _print_issues(issues)
-    return max(status, _print_issues(Layout.load(target).validate()))
+    data = draft_layout(args.input, float(args.width), name=Path(args.input).stem)
+    if args.journal:
+        data["journal"] = args.journal
+    return data, None
 
 
 def cmd_detect(args: argparse.Namespace) -> int:
-    from .detect import draft_layout
+    """Draft a layout from an existing figure: a PDF page, or a raster image of one."""
+    from .tidy import snap
 
-    data = draft_layout(
-        args.image,
-        args.width,
-        name=args.name or Path(args.image).stem,
-        min_gap_mm=args.min_gap,
-        min_size_mm=args.min_size,
-        attach_mm=args.attach,
-        threshold=args.threshold,
-    )
-    out = _drafted_layout_path(args, Path(args.image).parent)
+    source = Path(args.input)
+    if source.suffix.lower() in PDF_SUFFIXES:
+        found = _detect_from_pdf(args)
+        if found is None:
+            return 1
+        data, result = found
+    else:
+        if args.width is None:
+            print("--width is required for an image: it is what sets the scale", file=sys.stderr)
+            return 1
+        if isinstance(_number_or_name(args.width), str):
+            print(f"--width {args.width!r}: an image needs a number of millimetres", file=sys.stderr)
+            return 1
+        data, result = _detect_from_image(args)
+
+    # A detector reports what it measured; the numbers a person then edits should be the few
+    # the figure is really made of, so nearly-equal edges become one value here, always.
+    data = snap(data, tolerance=1.0)
+    out = _drafted_layout_path(args, source.parent)
     if out is None:
         return 1
     dump_yaml(data, out)
-    print(f"wrote {_rel(out)}: {len(data['panels'])} segments")
-    print("rename and merge them into panels, then run `plotplate tidy`")
-    if args.wireframe:
-        from .render import wireframe
-
-        wireframe(Layout.load(out), args.wireframe, background=args.image)
-        print(f"wrote {_rel(args.wireframe)}")
+    how = "gutter detection" if result is None else (
+        "placed graphics" if result.method == "placed" else "gutter detection"
+    )  # fmt: skip
+    print(f"wrote {_rel(out)}: {len(data['panels'])} panels from {how}, {list(data['panels'])}")
+    if result is not None:
+        for item in result.placed:
+            detail = f"scale {item.scale:.0%}" if item.scale is not None else f"{item.dpi:.0f} dpi"
+            print(f"  {item.name:6s} {item.kind:5s} {item.box.to_list(1)} mm  {detail}")
+        for note in result.notes:
+            print(f"  note: {note}")
+    _detect_wireframe(args, out, source, result)
+    # A draft is allowed to be a mess -- overlapping boxes are how a detector says "look here" --
+    # so the problems are printed and the draft is still written. `plotplate check` is the gate.
+    _print_issues(Layout.load(out).validate())
+    print(f"next: look at the wireframe, then plotplate view {_rel(out.parent)}")
     return 0
+
+
+def _detect_wireframe(args: argparse.Namespace, out: Path, source: Path, result: Any) -> None:
+    """Draw the drafted boxes over the figure they were read from -- the one check that matters."""
+    from .render import wireframe
+
+    background: Path | str = source
+    if result is not None and result.area is not None:
+        from .pdfimport import render_area
+
+        background = render_area(args.input, out.with_suffix(".source.png"), result.area, args.page)
+    target = out.with_name(f"{out.stem}.wireframe.png")
+    wireframe(Layout.load(out), target, background=background)
+    print(f"wrote {_rel(target)}: the boxes over {Path(background).name}")
 
 
 def cmd_merge(args: argparse.Namespace) -> int:
@@ -303,87 +339,26 @@ def _retarget_width(
     return data
 
 
-def cmd_from_pdf(args: argparse.Namespace) -> int:
-    from .pdfimport import layout_from_pdf, render_area
-    from .tidy import fill_gaps, tidy
-
-    result = layout_from_pdf(
-        args.pdf,
-        args.page,
-        name=args.name,
-        min_size_mm=args.min_size,
-        use_letters=not args.no_letters,
-        detect=args.detect,
-        axes=args.axes,
-        guides=args.guides,
-        paper=None if args.paper in (None, "none") else args.paper,
-    )
-    data = result.data
-    if args.journal:
-        data["journal"] = args.journal
-    if args.width is not None:
-        scaled = _retarget_width(args, data, result.paper)
-        if scaled is None:
-            return 1
-        data = scaled
-    if args.fill_gap is not None:
-        data = tidy(fill_gaps(data, args.fill_gap), tolerance=args.tolerance, step=0.5)
-    out = _drafted_layout_path(args, Path(args.pdf).parent)
-    if out is None:
-        return 1
-    dump_yaml(data, out)
-    how = "placed graphics" if result.method == "placed" else "gutter detection"
-    print(f"wrote {_rel(out)}: {len(data['panels'])} panels from {how}, {list(data['panels'])}")
-    for item in result.placed:
-        detail = f"scale {item.scale:.0%}" if item.scale is not None else f"{item.dpi:.0f} dpi"
-        print(f"  {item.name:6s} {item.kind:5s} {item.box.to_list(1)} mm  {detail}")
-    for note in result.notes:
-        print(f"  note: {note}")
-    if args.wireframe and result.area is not None:
-        from .render import wireframe
-
-        background = render_area(args.pdf, out.with_suffix(".source.png"), result.area, args.page)
-        wireframe(Layout.load(out), args.wireframe, background=background)
-        print(f"wrote {_rel(args.wireframe)} (boxes over {background.name})")
-    return 0
-
-
 def _optimize_target(args: argparse.Namespace, layout: Layout) -> Any:
-    """The optimizer settings: the layout's ``optimize:`` section, then the flags given.
+    """The optimizer settings: everything from the layout, plus the width to aim for.
 
-    Settings a figure keeps (a panel that must not be resized, a photograph's aspect ratio)
-    belong in the layout, where they are versioned and where an agent can edit them; the flags
-    are for trying something out.
+    How much a figure may be distorted, which panels must not move, how wide its gutters are:
+    those belong to the figure, so they are read from its ``gutter:`` and ``optimize:`` keys,
+    where they are versioned and where an agent can edit them. ``--width`` is the exception,
+    because aiming a draft at a column width is a decision about this run.
     """
     from dataclasses import replace
 
     from .pack import Target
 
     target = Target.from_layout(layout)
-    stretch = target.stretch
-    if args.max_stretch is not None:
-        stretch = None if str(args.max_stretch).lower() == "auto" else float(args.max_stretch)
-    width = None
-    if args.width is not None:
-        value = _number_or_name(args.width)
-        width = float(value) if not isinstance(value, str) else _journal_width(layout, value)
-        if width is None:
-            raise SystemExit(1)
-    height = target.height
-    if args.height is not None:
-        height = None if args.height == "scale" else (
-            layout.height if args.height == "keep" else float(args.height)
-        )  # fmt: skip
-    return replace(
-        target,
-        gap=args.gap if args.gap is not None else target.gap,
-        stretch=stretch,
-        shrink=args.max_shrink if args.max_shrink is not None else target.shrink,
-        width=width,
-        height=height,
-        freeze=tuple(sorted(set(target.freeze) | set(args.freeze or ()))),
-        keep_aspect=tuple(sorted(set(target.keep_aspect) | set(args.keep_aspect or ()))),
-    )
+    if args.width is None:
+        return target
+    value = _number_or_name(args.width)
+    width = float(value) if not isinstance(value, str) else _journal_width(layout, value)
+    if width is None:
+        raise SystemExit(1)
+    return replace(target, width=width)
 
 
 def _optimize_report(report: Any, target: Any, source: str) -> None:
@@ -420,9 +395,12 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     from .pack import PackError, optimize
 
     layout = Layout.load(args.layout)
+    if args.journal:  # aiming a draft at a journal is how most runs start
+        layout.raw["journal"] = args.journal
+        layout = Layout(layout.raw, layout.path)
     target = _optimize_target(args, layout)
     try:
-        data, report = optimize(layout, target, tolerance=args.tolerance)
+        data, report = optimize(layout, target, tolerance=target.tolerance)
     except PackError as exc:
         print(f"cannot optimize {_rel(layout.file)}: {exc}", file=sys.stderr)
         return 1
@@ -498,71 +476,12 @@ def cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_relabel(args: argparse.Namespace) -> int:
-    layout = Layout.load(args.layout)
-    data = dict(layout.raw)
-    data["labels"] = "auto"
-    panels = data.get("panels") or {}
-    for name, spec in Layout(data, layout.path).panels.items():
-        entry = panels.get(name) or {}
-        if entry.get("label") is not False:
-            entry["label"] = {"text": spec.label, "offset": list(spec.label_offset)}
-        panels[name] = entry
-    data["labels"] = "id"  # labels are explicit now
-    out = _writable(args, resolve_layout_path(args.layout))
-    if out is None:
-        return 1
-    dump_yaml(data, out)
-    letters = {name: (panels[name].get("label") or {}).get("text") for name in panels}
-    print(f"wrote {_rel(out)}: {letters}")
-    return 0
-
-
-def cmd_tidy(args: argparse.Namespace) -> int:
-    from .tidy import fill_gaps, tidy
-
-    path = resolve_layout_path(args.layout)
-    data = load_yaml(path)
-    if args.fill_gap is not None:
-        data = fill_gaps(data, args.fill_gap)
-    data = tidy(data, tolerance=args.tolerance, step=args.step)
-    out = _writable(args, path)
-    if out is None:
-        return 1
-    dump_yaml(data, out)
-    print(f"wrote {_rel(out)}")
-    return _print_issues(Layout.load(out).validate())
-
-
 def cmd_wireframe(args: argparse.Namespace) -> int:
     from .render import wireframe
 
     layout = Layout.load(args.layout)
-    out = wireframe(
-        layout, args.output or layout.output_dir / "wireframe.png", background=args.background
-    )
+    out = wireframe(layout, args.output or layout.output_dir / "wireframe.png")
     print(f"wrote {_rel(out)}")
-    return 0
-
-
-def cmd_preview(args: argparse.Namespace) -> int:
-    from .render import page_view, preview
-
-    layout = Layout.load(args.layout)
-    rules = None
-    if args.rules:
-        from .align import read_features, rule_lines
-
-        features, _ = read_features(layout)
-        entries, _ = _alignment_rules(layout, args.constraints)
-        rules = rule_lines(features, entries)
-    paths = preview(
-        layout, args.output_dir, labels=not args.no_labels, outlines=args.outlines, rules=rules
-    )
-    if args.page:
-        page = page_view(layout, args.output_dir, args.page, outlines=args.page_outlines)
-        paths.update({f"page-{key}": value for key, value in page.items()})
-    print("wrote " + ", ".join(_rel(p) for p in paths.values()))
     return 0
 
 
@@ -575,55 +494,57 @@ def _demo_cases() -> dict[str, Any]:
 
 
 def _build_figure_demo(dest: Path, python: str) -> int:
-    """Run the walkthrough: legacy PDF, optimized draft, tables, panels, export, page view."""
+    """Run the walkthrough: read an old figure back, optimize it, draw the panels, export."""
     import os
     import subprocess
 
-    from .render import export_figure, page_view
+    from .render import export_figure
 
     figure = dest / "figures" / "figure_1"
+    draft = figure / "layout.detected.yaml"
     print("\n[1/5] read the old figure back: legacy/manuscript.pdf -> layout.detected.yaml")
     status = main(
         [
-            "from-pdf", str(dest / "legacy" / "manuscript.pdf"),
-            "-o", str(figure / "layout.detected.yaml"),
-            "--journal", "nature", "--width", "double", "--paper", "a4",
-            "--axes", "--guides", "--wireframe", str(figure / "detected.wireframe.png"),
+            "detect", str(dest / "legacy" / "manuscript.pdf"),
+            "-o", str(draft), "--journal", "nature", "--width", "double",
         ]
     )  # fmt: skip
-    # --height 168 also brings the draft under Nature's 170 mm limit, which it exceeded.
-    # --height 168 also brings the draft under Nature's 170 mm limit, which it exceeded.
-    print("\n[2/5] spend the white space of that draft: layout.optimized.yaml")
-    optimized = main(
-        [
-            "optimize", str(figure / "layout.detected.yaml"), "--gap", "4", "--height", "168",
-        ]
-    )  # fmt: skip
-    status = max(status, optimized)
+
+    print("\n[2/5] say what the figure wants, in the file you would edit yourself")
+    # These two numbers belong to the figure, not to a command line: the gutter it is drawn
+    # with, and the height to aim for -- which also brings it under Nature's 170 mm limit.
+    data = load_yaml(draft)
+    data["gutter"] = 4
+    data["optimize"] = {"height": 168}
+    dump_yaml(data, draft)
+    print(f"  {_rel(draft)}: gutter: 4, optimize: {{height: 168}}")
+    print("      then spend its white space -> layout.optimized.yaml")
+    status = max(status, main(["optimize", str(draft)]))
+
     print("\n[3/5] write the demo tables")
     env = {**os.environ, "MPLBACKEND": "Agg"}
     subprocess.run([python, "make_data.py"], cwd=figure, env=env, check=True)
-    print("\n[4/5] draw the panels of the maintained layout, then preview, LaTeX and checks")
+
+    print("\n[4/5] draw the panels of the maintained layout, then the page, LaTeX and the checks")
     if main(["build", str(figure / "layout.yaml"), "--python", python]) != 0:
         print("\nthe build failed: see the messages above (a panel script error, or failed checks)")
         return 1
     main(["wireframe", str(figure / "layout.yaml")])
-    print("\n[5/5] production file and page view")
+
+    print("\n[5/5] the production file")
     layout = Layout.load(figure / "layout.yaml")
-    out, issues = export_figure(layout, figure / "export" / "Figure1.pdf")
+    out, issues = export_figure(layout, layout.output_dir / "Figure1.pdf")
     status = max(status, _print_issues(issues))
-    page = page_view(layout, paper="a4")
-    print(f"wrote {_rel(out)}, {_rel(page['png'])}")
+    print(f"wrote {_rel(out)}")
     print("\nlook at, in order:")
     for path in (
-        figure / "detected.wireframe.png",
+        draft.with_name(f"{draft.stem}.wireframe.png"),
         layout.output_dir / "wireframe.png",
-        layout.output_dir / "figure.png",
-        page["png"],
+        layout.output_dir / "page.png",
     ):
         print(f"  {_rel(path)}")
-    print(f"\nthen open all three layouts at once:\n  plotplate view {_rel(figure)}")
-    print(f"  plotplate view {_rel(figure)} --edit   # ... and move the boxes yourself")
+    print("\nthen open all three layouts at once, and move the boxes yourself:")
+    print(f"  plotplate view {_rel(figure)}")
     return status
 
 
@@ -632,31 +553,21 @@ _DEMO_BUILDERS = {"figure": _build_figure_demo}
 
 def cmd_demo(args: argparse.Namespace) -> int:
     cases = _demo_cases()
-    if args.list or args.case is None:
-        print("demo cases (plotplate demo <case> --dir <folder> --build):")
-        for name, entry in cases.items():
-            first = (entry / "README.md").read_text(encoding="utf-8").splitlines()
-            summary = next((line for line in first[1:] if line.strip()), "")
-            print(f"  {name:12s} {summary}")
-        return 0
-    if args.case not in cases:
-        print(f"unknown case {args.case!r}; have {', '.join(cases)}", file=sys.stderr)
-        return 1
-
-    dest = Path(args.dir) if args.dir else Path(f"plotplate-demo-{args.case}")
+    case = "figure"
+    dest = Path(args.dir) if args.dir else Path(f"plotplate-demo-{case}")
     if dest.exists() and any(dest.iterdir()) and not args.force:
         print(f"{_rel(dest)} is not empty (use --force to overwrite demo files)", file=sys.stderr)
         return 1
-    _copy_tree(cases[args.case], dest)
-    print(f"copied the {args.case} demo to {_rel(dest)}; read {_rel(dest / 'README.md')}")
+    _copy_tree(cases[case], dest)
+    print(f"copied the demo to {_rel(dest)}; read {_rel(dest / 'README.md')}")
     if not args.build:
-        print(f"next: plotplate demo {args.case} --dir {_rel(dest)} --build --force")
+        print(f"next: plotplate demo --dir {_rel(dest)} --build --force")
         return 0
 
     python = args.python or sys.executable
-    builder = _DEMO_BUILDERS.get(args.case)
+    builder = _DEMO_BUILDERS.get(case)
     if builder is None:
-        print(f"the {args.case} case has no build steps; read {_rel(dest / 'README.md')}")
+        print(f"the {case} case has no build steps; read {_rel(dest / 'README.md')}")
         return 0
     missing = _missing_modules(python, ("pandas", "pyarrow", "scipy", "seaborn"))
     if missing:
@@ -675,7 +586,7 @@ def _copy_tree(source: Any, target: Path) -> None:
     """Copy package data (a Traversable) without generated folders."""
     target.mkdir(parents=True, exist_ok=True)
     for entry in source.iterdir():
-        if entry.name in {"__pycache__", "data", "panels", "export", "draft"}:
+        if entry.name in {"__pycache__", "data", "output", "panels", "export", "draft"}:
             continue
         if entry.is_dir():
             _copy_tree(entry, target / entry.name)
@@ -684,25 +595,9 @@ def _copy_tree(source: Any, target: Path) -> None:
 
 
 def cmd_latex(args: argparse.Namespace) -> int:
-    from .latex import write_figure_scaffold, write_figure_tex
-
-    layout = Layout.load(args.layout)
-    out = write_figure_tex(
-        layout,
-        args.output,
-        graphics_prefix=args.prefix,
-        labels=not args.no_labels,
-    )
-    print(f"wrote {_rel(out)}")
-    if not args.no_scaffold:
-        scaffold = write_figure_scaffold(layout)
-        print(f"{'wrote' if scaffold.stat().st_size else 'kept'} {_rel(scaffold)}: yours to edit")
-    return 0
-
-
-def cmd_bundle(args: argparse.Namespace) -> int:
     from .latex import bundle
 
+    """Fill a folder with what the manuscript needs: the panels and the .tex that places them."""
     layout = Layout.load(args.layout)
     status = cmd_check(args)
     # Everything a build produces lives under output_dir; the upload folder is one of those.
@@ -713,15 +608,10 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     print("then, one line in the manuscript:\n")
     print(f"  \\input{{{prefix}{layout.name}-figure.tex}}\n")
     print(
-        f"{layout.name}-figure.tex holds the figure environment, the caption and the label, and is\n"
-        f"yours to edit; {layout.name}.tex holds the panels and is rewritten by plotplate build."
+        f"{layout.name}-figure.tex holds the figure environment, the caption and the label: it is a\n"
+        f"copy of the one beside your layout, so the caption you wrote travels with it.\n"
+        f"{layout.name}.tex holds the panels, and plotplate rewrites it on every build."
     )
-    if (out.parent / f"{layout.name}.pdf").exists():
-        print(
-            f"\n{layout.name}.pdf is the same figure as one file, for looking at and for "
-            "hand-finishing;\nto include that instead of the panels, replace the \\input line with"
-        )
-        print(f"  \\includegraphics{{{prefix}{layout.name}.pdf}}")
     return status
 
 
@@ -731,25 +621,12 @@ def cmd_export(args: argparse.Namespace) -> int:
     layout = Layout.load(args.layout)
     status = cmd_check(args)
     try:
-        out, issues = export_figure(
-            layout, args.output, dpi=args.dpi, allow_missing=args.allow_missing
-        )
+        out, issues = export_figure(layout, args.output, allow_missing=args.allow_missing)
     except ValueError as exc:  # missing or wrongly sized panels: the file would be wrong
         print(str(exc), file=sys.stderr)
         return 1
     print(f"wrote {_rel(out)}")
     return max(status, _print_issues(issues))
-
-
-def cmd_palettes(args: argparse.Namespace) -> int:
-    import yaml
-
-    from .config import PRESETS
-
-    palettes = yaml.safe_load((PRESETS / "palettes.yaml").read_text(encoding="utf-8"))
-    for name, entry in palettes.items():
-        print(f"{name:18s} {' '.join(entry['colors'])}\n{'':18s} {entry['description']}")
-    return 0
 
 
 def _alignment_rules(layout: Layout, path: str | None) -> tuple[list[dict[str, Any]], float]:
@@ -760,60 +637,7 @@ def _alignment_rules(layout: Layout, path: str | None) -> tuple[list[dict[str, A
     return list(data.get("rules") or []), float(data.get("tolerance", 0.3))
 
 
-def cmd_align(args: argparse.Namespace) -> int:
-    from .align import check_rules, near_misses, read_features
-
-    layout = Layout.load(args.layout)
-    features, issues = read_features(layout)
-    rules, tolerance = _alignment_rules(layout, args.constraints)
-    tolerance = args.tolerance if args.tolerance is not None else tolerance
-    if rules:
-        print(f"{len(rules)} rules, tolerance {tolerance} mm, {len(features)} features")
-        issues += check_rules(features, rules, tolerance)
-    else:
-        print(f"no alignment.yaml: reporting features within {args.near} mm of each other")
-        issues += near_misses(features, args.near)
-    status = _print_issues(issues)
-    print("OK" if status == 0 else "MISALIGNED")
-    return status
-
-
 _ANONYMOUS = re.compile(r"^ax\d+$")
-
-
-def cmd_features(args: argparse.Namespace) -> int:
-    """List every measurable feature of the saved panels, ready to paste into alignment.yaml."""
-    from .align import read_features
-
-    layout = Layout.load(args.layout)
-    features, issues = read_features(layout)
-    if not features:
-        print("no geometry yet: draw the panels first (`plotplate build`)")
-        return _print_issues(issues)
-    width = max(len(ref) for ref in features)
-    print(f"{'feature':{width}}  kind    coordinates (mm)")
-    for ref, feature in sorted(features.items()):
-        if feature.kind == "mark":
-            detail = f"x {feature.values['x']:.2f}  y {feature.values['y']:.2f}"
-        else:
-            edges = "  ".join(
-                f"{e} {feature.values[e]:.2f}" for e in ("left", "right", "top", "bottom")
-            )
-            spines = ",".join(feature.spines) or "no spines"
-            detail = edges if feature.kind == "anchor" else f"{edges}   [{spines}]"
-        print(f"{ref:{width}}  {feature.kind:6}  {detail}")
-
-    anonymous = sorted(ref for ref, feature in features.items() if _ANONYMOUS.match(feature.name))
-    if anonymous:
-        issues.append(
-            Issue(
-                "error" if args.check else "warning",
-                "unnamed-axes",
-                f"{len(anonymous)} axes have no name ({', '.join(anonymous)}): add an axes entry "
-                'in the layout, or ax.set_label("...") in the panel code',
-            )
-        )
-    return _print_issues(issues)
 
 
 def cmd_view(args: argparse.Namespace) -> int:
@@ -825,41 +649,73 @@ def cmd_view(args: argparse.Namespace) -> int:
         return 1
     serve(
         args.layout,
-        host=args.host,
         port=args.port,
         open_browser=not args.no_browser,
-        paper=None if args.paper in (None, "none") else args.paper,
-        editable=args.edit,
+        paper="a4",
+        editable=True,  # the viewer is where a layout is edited; nothing is written until you save
     )
     return 0
 
 
+def _alignment_issues(layout: Layout) -> list[Issue]:
+    """Did the panels come out aligned? Compares what was measured with what was declared.
+
+    Two sources, in this order. Every axes edge the layout declares at the same coordinate is a
+    contract -- that is what a guide is for -- so the measured spines there must agree, with no
+    file to write. An ``alignment.yaml`` beside the layout adds the cases no rectangle can
+    express: a mark in data coordinates, a legend, a library's own axes.
+    """
+    from .align import check_rules, drift, read_features
+
+    features, issues = read_features(layout)
+    if not features:
+        return issues
+    rules, tolerance = _alignment_rules(layout, None)
+    issues += drift(layout, features, tolerance)
+    if rules:
+        issues += check_rules(features, rules, tolerance)
+    anonymous = sorted(ref for ref, feature in features.items() if _ANONYMOUS.match(feature.name))
+    if anonymous:
+        issues.append(
+            Issue(
+                "warning",
+                "unnamed-axes",
+                f"{len(anonymous)} axes have no name ({', '.join(anonymous)}): add an axes entry "
+                'in the layout, or ax.set_label("...") in the panel code',
+            )
+        )
+    return issues
+
+
 def cmd_check(args: argparse.Namespace) -> int:
+    """Everything that can be wrong with a figure, in one report."""
     from .render import panel_status
 
     layout = Layout.load(args.layout)
     issues = layout.validate()
     for info in panel_status(layout).values():
         issues.extend(info["issues"])
-    print(f"{layout.name}: {len(layout.panels)} panels")
+    issues += _alignment_issues(layout)
+    print(f"{layout.name}: {len(layout.panels)} panels, {layout.width} x {layout.height} mm")
     status = _print_issues(issues)
     print("OK" if status == 0 else "ERRORS")
     return status
 
 
 def panel_sources(layout: Layout, sources_dir: str | None = None) -> dict[str, Path]:
-    """Script of each panel: ``panels.<name>.source``, or ``panel_<name>_*.py`` in a folder.
+    """Script of each panel: ``panels.<name>.source``, or ``panel_<name>*.py`` in ``code_dir``.
 
     Panel scripts are only needed by ``plotplate build``, which runs them for you. Every other
-    command works from the saved panel files, so the code can live anywhere (a notebooks/
-    folder, another repository) and be run however you like.
+    command works from the saved panel files, so the code can live where it suits (``code_dir:
+    code``, a notebooks folder, another repository) and be run however you like. Jupytext
+    percent-format ``.py`` files are ordinary scripts and run as they are.
     """
-    root = Path(sources_dir) if sources_dir else layout.base_dir
+    root = Path(sources_dir) if sources_dir else layout.code_dir
     sources: dict[str, Path] = {}
     for name in layout.panels:
         explicit = ((layout.raw.get("panels") or {}).get(name) or {}).get("source")
         if explicit:
-            sources[name] = layout.base_dir / explicit
+            sources[name] = layout.code_dir / explicit
             continue
         matches = sorted(root.glob(f"panel_{name}_*.py")) + sorted(root.glob(f"panel_{name}.py"))
         if matches:
@@ -868,15 +724,15 @@ def panel_sources(layout: Layout, sources_dir: str | None = None) -> dict[str, P
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    """Run panel scripts, then write preview, LaTeX snippet and check results."""
+    """Draw the panels, put the figure on its page, write the LaTeX, check the result."""
     import os
     import subprocess
 
     from .latex import write_figure_scaffold, write_figure_tex
-    from .render import page_view, preview
+    from .render import page_view
 
     layout = Layout.load(args.layout)
-    sources = panel_sources(layout, getattr(args, "sources", None))
+    sources = panel_sources(layout)
     wanted = args.panels or list(layout.panels)
     python = getattr(args, "python", None) or sys.executable
     problem = _environment_issue(python)
@@ -889,23 +745,20 @@ def cmd_build(args: argparse.Namespace) -> int:
     for name in wanted:
         script = sources.get(name)
         if script is None:
-            print(f"panel {name}: no script (panel_{name}_*.py or panels.{name}.source)")
+            where = _rel(layout.code_dir)
+            print(f"panel {name}: no script (panel_{name}*.py in {where}, or panels.{name}.source)")
             continue
         print(f"panel {name}: running {script.name}")
         result = subprocess.run([python, script.name], cwd=script.parent, env=env, check=False)
         if result.returncode != 0:
             failed.append(name)
-    paths = preview(layout)
-    wanted = dict(layout.raw.get("preview") or {})
-    if wanted.get("page"):  # the layout asks for the page view on every build
-        paths.update(
-            {
-                f"page-{key}": value
-                for key, value in page_view(
-                    layout, paper=str(wanted["page"]), outlines=bool(wanted.get("outlines"))
-                ).items()
-            }
-        )
+    # One rendering to look at: the figure on its sheet. `plotplate export` writes the figure
+    # itself, cropped, when the one file is what is wanted.
+    paths: dict[str, Path] = {}
+    if layout.sheet_geometry("a4") is None:
+        print("page: none in the layout, so there is no page view; plotplate export writes a file")
+    else:
+        paths = page_view(layout, outlines=layout.page_outlines)
     tex = write_figure_tex(layout)
     scaffold = write_figure_scaffold(layout)  # once; a caption written there survives rebuilds
     print("wrote " + ", ".join(_rel(path) for path in [*paths.values(), tex]))
@@ -921,7 +774,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     """Report which plotplate runs the commands, which one the notebooks import, and the fonts."""
     import plotplate
 
-    from .style import first_available_font
+    from .style import first_available_font, rebuild_font_cache
+
+    if args.rebuild_fonts:
+        rebuild_font_cache()
+        print("matplotlib font cache rebuilt\n")
 
     print("command (this process)")
     print(f"  plotplate {__version__}")
@@ -949,20 +806,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     found = [f for f in families if first_available_font([f])]
     print(f"fonts: {found or 'none of ' + str(families)}")
     if not found:
-        print("       install one, then run `plotplate fonts --rebuild`")
+        print("       install one, then run `plotplate doctor --rebuild-fonts`")
     return 1 if problem is not None and problem.level == "error" else 0
-
-
-def cmd_fonts(args: argparse.Namespace) -> int:
-    from .style import first_available_font, rebuild_font_cache
-
-    if args.rebuild:
-        rebuild_font_cache()
-        print("matplotlib font cache rebuilt")
-    families = args.family or ["Arial", "Liberation Sans", "Helvetica"]
-    for family in families:
-        print(f"{family:20s} {'found' if first_available_font([family]) else 'MISSING'}")
-    return 0
 
 
 def _skill_file(entry: Any, name: str) -> Path:
@@ -1018,20 +863,8 @@ def _list_skills(skills: list[dict[str, Any]]) -> None:
 
 def cmd_skills(args: argparse.Namespace) -> int:
     skills = _skills()
-    if args.paths:  # one path per line: `plotplate skills --paths | xargs cat`, or paste them
-        for skill in skills:
-            print(skill["path"])
-        return 0
-    if args.json:
-        print(json.dumps(skills, indent=2))
-        return 0
     if args.list:
         _list_skills(skills)
-        return 0
-    if args.print:
-        for skill in skills:
-            print(f"<!-- {skill['name']} ({skill['path']}) -->")
-            print(Path(skill["path"]).read_text(encoding="utf-8"))
         return 0
     source = resources.files("plotplate") / "skills"
     dest = Path(args.dest)
@@ -1048,21 +881,132 @@ def cmd_skills(args: argparse.Namespace) -> int:
     return 0
 
 
+GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "the four you need",
+        (
+            ("detect", "draft a layout from a figure that exists: a PDF page, or an image"),
+            ("optimize", "spend the white space between the panels"),
+            ("view", "open the layout in a browser and move the boxes"),
+            ("build", "draw the panels, put the figure on its page, check it"),
+        ),
+    ),
+    (
+        "at hand-off",
+        (
+            ("check", "everything that can be wrong with the figure, in one report"),
+            ("export", "the figure as one file: .pdf, .png, .tif or .svg"),
+            ("latex", "fill a folder to upload to Overleaf: the panels and their .tex"),
+        ),
+    ),
+    (
+        "when a layout needs surgery",
+        (
+            ("new", "start one from a mosaic string, e.g. 'AAB/CDD'"),
+            ("merge", "make several detected segments into one panel"),
+            ("resolve", "freeze solved boxes as plain numbers"),
+            ("diff", "compare two layouts: what moved, merged, split, appeared"),
+            ("wireframe", "draw the boxes as a PNG, before any panel exists"),
+        ),
+    ),
+    (
+        "your setup",
+        (
+            ("demo", "copy a worked example into a folder, and build it"),
+            ("doctor", "which plotplate runs what, which fonts are there"),
+            ("skills", "install the agent skills"),
+            ("journals", "column widths and limits of the bundled presets"),
+        ),
+    ),
+)
+
+
+def _epilog() -> str:
+    """The command list, grouped by when it is needed rather than alphabetically."""
+    lines = []
+    for title, commands in GROUPS:
+        lines.append(f"\n{title}:")
+        lines += [f"  {name:10s} {summary}" for name, summary in commands]
+    lines.append("\n`plotplate <command> --help` for one command.")
+    lines.append("A figure's own settings -- its width, its gutters, how far the optimizer")
+    lines.append("may stretch a panel -- live in layout.yaml, not in these flags.")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     from . import __version__
 
-    parser = argparse.ArgumentParser(prog="plotplate", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="plotplate",
+        description=__doc__,
+        epilog=_epilog(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--version", action="version", version=f"plotplate {__version__}")
-    sub = parser.add_subparsers(dest="command", required=True)
+    # The subcommands are listed by `_epilog` in groups, so argparse does not list them again.
+    sub = parser.add_subparsers(dest="command", required=True, metavar="<command>")
+    summaries = {name: summary for _, commands in GROUPS for name, summary in commands}
 
-    def add(name: str, func: object, help_text: str) -> argparse.ArgumentParser:
-        p = sub.add_parser(name, help=help_text, description=help_text)
+    def add(name: str, func: object) -> argparse.ArgumentParser:
+        p = sub.add_parser(name, description=summaries[name].capitalize() + ".")
         p.set_defaults(func=func)
         return p
 
-    add("journals", cmd_journals, "List bundled journal presets.")
+    # ----------------------------------------------------------- the four you need
+    p = add("detect", cmd_detect)
+    p.add_argument("input", help="a PDF page, or a PNG/JPG of a figure")
+    p.add_argument("-o", "--output", help="layout file or folder (default: beside the input)")
+    p.add_argument("--force", action="store_true", help="overwrite an existing draft")
+    p.add_argument(
+        "--width",
+        help="the width to draft at: mm, or a journal width name; required for an image",
+    )
+    p.add_argument("--journal", help="journal preset to record (see `plotplate journals`)")
+    p.add_argument("--page", type=int, default=1, help="which page of a PDF, 1-based")
 
-    p = add("new", cmd_new, "Create a layout from a mosaic string, e.g. 'AAB/CDD'.")
+    p = add("optimize", cmd_optimize)
+    p.add_argument("layout", help="layout file, or the figure folder holding layout.yaml")
+    p.add_argument("-o", "--output", help="default: layout.optimized.yaml next to the input")
+    p.add_argument(
+        "--as", dest="variant", help="write layout.<name>.yaml instead of layout.optimized.yaml"
+    )
+    p.add_argument("--width", help="target width: mm, or a journal width name (single, double…)")
+    p.add_argument("--journal", help="aim at this journal's style and limits, and record it")
+    p.add_argument("--dry-run", action="store_true", help="report, write nothing")
+    p.add_argument("--json", action="store_true", help="report as JSON (for agents and scripts)")
+
+    p = add("view", cmd_view)
+    p.add_argument("layout", help="layout file, or the figure folder (every variant is offered)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true", help="do not open a browser")
+
+    p = add("build", cmd_build)
+    p.add_argument("layout")
+    p.add_argument("panels", nargs="*", help="only these panels (default: all)")
+    p.add_argument("--python", help="interpreter that runs the panel scripts (default: this one)")
+
+    # ----------------------------------------------------------- at hand-off
+    p = add("check", cmd_check)
+    p.add_argument("layout")
+
+    p = add("export", cmd_export)
+    p.add_argument("layout")
+    p.add_argument("-o", "--output", required=True, help="e.g. Figure1.pdf, Fig1.tif, touch-up.svg")
+    p.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="draw missing panels as empty boxes instead of refusing: for a draft",
+    )
+
+    p = add("latex", cmd_latex)
+    p.add_argument("layout")
+    p.add_argument(
+        "output_dir", nargs="?", help="folder to fill (default: <output_dir>/overleaf in the figure)"
+    )
+    p.add_argument("--prefix", help="panel path inside Overleaf (default figures/<name>/)")
+
+    # ----------------------------------------------------------- layout surgery
+    p = add("new", cmd_new)
     p.add_argument("output", help="layout file to write, or a folder (then layout.yaml in it)")
     p.add_argument(
         "--mosaic", required=True, help="rows separated by '/', one char per cell, '.' empty"
@@ -1070,246 +1014,59 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--journal", default="generic-a4")
     p.add_argument("--width", default="full", help="mm or journal width name (single, double…)")
     p.add_argument("--height", type=float, required=True, help="mm")
-    p.add_argument("--gap", type=float, default=4.0, help="mm between cells")
-    p.add_argument("--paper", default="a4", help="sheet the figure is printed on: a4, letter, none")
-    p.add_argument("--name")
     p.add_argument("--force", action="store_true")
 
-    p = add("validate", cmd_validate, "Check layout geometry.")
-    p.add_argument("layout")
-
-    p = add("resolve", cmd_resolve, "Make every box explicit (resolve constraints, mosaic, guides).")
-    p.add_argument("layout")
-    p.add_argument("-o", "--output")
-
-    p = add("svg-export", cmd_svg_export, "Write an Inkscape SVG of the layout.")
-    p.add_argument("layout")
-    p.add_argument("-o", "--output")
-    p.add_argument("--background", help="screenshot to trace over (locked layer)")
-
-    p = add("svg-import", cmd_svg_import, "Update a layout YAML from rectangles drawn in Inkscape.")
-    p.add_argument("svg")
-    p.add_argument(
-        "-o", "--output", help="layout YAML to update (default: layout.detected.yaml by the SVG)"
-    )
-
-    p = add("detect", cmd_detect, "Draft panel boxes from a figure screenshot (XY-cut).")
-    p.add_argument("image")
-    p.add_argument("--width", type=float, required=True, help="figure width in mm = image width")
-    p.add_argument(
-        "-o", "--output", help="layout file or folder (default: layout.detected.yaml by the image)"
-    )
-    p.add_argument("--force", action="store_true", help="overwrite an existing layout file")
-    p.add_argument("--name")
-    p.add_argument("--min-gap", type=float, default=1.5, help="mm")
-    p.add_argument("--min-size", type=float, default=3.0, help="mm")
-    p.add_argument("--attach", type=float, default=2.5, help="mm; small blocks closer merge in")
-    p.add_argument("--threshold", type=float, default=0.9)
-    p.add_argument("--wireframe", help="also write a wireframe PNG over the screenshot")
-
-    p = add("from-pdf", cmd_from_pdf, "Draft a layout from a PDF page (placed graphics + labels).")
-    p.add_argument("pdf")
-    p.add_argument(
-        "-o", "--output", help="layout file or folder (default: layout.detected.yaml by the PDF)"
-    )
-    p.add_argument("--force", action="store_true", help="overwrite an existing layout file")
-    p.add_argument("--page", type=int, default=1, help="1-based page number")
-    p.add_argument("--name")
-    p.add_argument("--journal", help="journal preset to record in the layout")
-    p.add_argument("--width", help="rescale the draft to this width: mm, or a --journal width name")
-    p.add_argument("--min-size", type=float, default=5.0, help="mm; ignore smaller graphics")
-    p.add_argument(
-        "--paper",
-        default="a4",
-        help="sheet to record when the PDF is a figure on its own (a4, letter, none)",
-    )
-    p.add_argument("--no-letters", action="store_true", help="do not name/group by panel letters")
-    p.add_argument("--detect", action="store_true", help="force gutter detection (flattened PDFs)")
-    p.add_argument(
-        "--axes", action="store_true", help="also read plotting areas inside vector panels"
-    )
-    p.add_argument(
-        "--guides",
-        type=float,
-        nargs="?",
-        const=0.5,
-        help="with --axes: name shared edges (mm tolerance, default 0.5)",
-    )
-    p.add_argument("--fill-gap", type=float, help="grow panel boxes to meet this many mm apart")
-    p.add_argument("--tolerance", type=float, default=1.0, help="mm, edge alignment with --fill-gap")
-    p.add_argument("--wireframe", help="write the boxes over the rendered figure area (PNG)")
-
-    p = add("tidy", cmd_tidy, "Align nearly-equal edges and snap boxes to a step.")
-    p.add_argument("layout")
-    p.add_argument("-o", "--output")
-    p.add_argument("--tolerance", type=float, default=1.0, help="mm")
-    p.add_argument("--step", type=float, default=0.5, help="mm, 0 to disable")
-    p.add_argument(
-        "--fill-gap", type=float, help="first grow boxes to meet neighbours this many mm apart"
-    )
-
-    p = add("optimize", cmd_optimize, "Grow the panels to use the white space between them.")
-    p.add_argument("layout", help="layout file, or the figure folder holding layout.yaml")
-    p.add_argument("-o", "--output", help="default: layout.optimized.yaml next to the input")
-    p.add_argument(
-        "--as",
-        dest="variant",
-        metavar="NAME",
-        help="write layout.NAME.yaml next to the input, so several attempts can sit side by side "
-        "and `plotplate view` can switch between them (default: optimized)",
-    )
-    p.add_argument("--gap", type=float, help="mm; every gutter becomes this wide (default 4)")
-    p.add_argument(
-        "--max-stretch",
-        help="how much a panel may grow: a factor, or 'auto' (the default) to use the smallest "
-        "factor that fills every row",
-    )
-    p.add_argument("--max-shrink", type=float, help="how much a panel may shrink (default 1.2)")
-    p.add_argument("--width", help="target width: mm, or a journal width name (single, double…)")
-    p.add_argument("--height", help="'scale' (keep the proportions, default), 'keep', or mm")
-    p.add_argument("--tolerance", type=float, default=1.0, help="mm; edges this close are shared")
-    p.add_argument("--freeze", nargs="*", help="panels that keep their exact size")
-    p.add_argument("--keep-aspect", nargs="*", help="panels that keep their width/height ratio")
-    p.add_argument("--dry-run", action="store_true", help="report, write nothing")
-    p.add_argument("--json", action="store_true", help="report as JSON (for agents and scripts)")
-
-    p = add("diff", cmd_diff, "Compare two layouts: what moved, merged, split, was added or removed.")
-    p.add_argument("old")
-    p.add_argument("new")
-    p.add_argument("-o", "--output", help="write the revision plan (YAML)")
-    p.add_argument("--wireframe", help="write a before/after wireframe (PNG)")
-    p.add_argument(
-        "--mapping", help="YAML with `mapping: {old: [new, ...]}` instead of matching by overlap"
-    )
-
-    p = add("relabel", cmd_relabel, "Write explicit panel letters, assigned in reading order.")
-    p.add_argument("layout")
-    p.add_argument("-o", "--output")
-
-    p = add("merge", cmd_merge, "Merge panels (e.g. detected segments) into one, by box union.")
+    p = add("merge", cmd_merge)
     p.add_argument("layout")
     p.add_argument("panels", nargs="+")
     p.add_argument("--as", dest="name", required=True, help="name of the merged panel")
     p.add_argument("-o", "--output")
 
-    p = add("wireframe", cmd_wireframe, "Draw the layout boxes, optionally over a screenshot.")
+    p = add("resolve", cmd_resolve)
     p.add_argument("layout")
     p.add_argument("-o", "--output")
-    p.add_argument("--background")
 
-    p = add("preview", cmd_preview, "Compose figure.pdf/png/svg from the saved panels.")
-    p.add_argument("layout")
-    p.add_argument("--output-dir")
-    p.add_argument("--no-labels", action="store_true")
-    p.add_argument("--outlines", action="store_true", help="outline every panel box in the figure")
-    p.add_argument("--page", choices=["a4", "letter"], help="also write page.* on this paper")
+    p = add("diff", cmd_diff)
+    p.add_argument("old")
+    p.add_argument("new")
+    p.add_argument("-o", "--output", help="write the revision plan (YAML)")
+    p.add_argument("--wireframe", help="write a before/after wireframe (PNG)")
     p.add_argument(
-        "--page-outlines",
-        action="store_true",
-        help="outline the panel boxes in the page view only, leaving the figure itself clean",
-    )
-    p.add_argument("--rules", action="store_true", help="draw the alignment rules across the page")
-    p.add_argument(
-        "--constraints", help="alignment file (default: alignment.yaml next to the layout)"
+        "--mapping", help="YAML file with `mapping: {old: new}`, when the boxes cannot say"
     )
 
-    p = add("latex", cmd_latex, "Write the LaTeX snippet placing the panels.")
+    p = add("wireframe", cmd_wireframe)
     p.add_argument("layout")
     p.add_argument("-o", "--output")
-    p.add_argument("--prefix", default="panels/", help="graphics path prefix in LaTeX")
-    p.add_argument("--no-labels", action="store_true")
-    p.add_argument(
-        "--no-scaffold",
-        action="store_true",
-        help="do not create <name>-figure.tex (the figure environment and caption)",
-    )
 
-    p = add("features", cmd_features, "List the measurable features of the saved panels.")
-    p.add_argument("layout")
-    p.add_argument("--check", action="store_true", help="fail when axes have no name")
-
-    p = add("align", cmd_align, "Check that panel features line up, using measured page coordinates.")
-    p.add_argument("layout")
-    p.add_argument(
-        "--constraints", help="alignment file (default: alignment.yaml next to the layout)"
-    )
-    p.add_argument("--tolerance", type=float, help="mm; overrides the file's tolerance")
-    p.add_argument(
-        "--near", type=float, default=1.0, help="mm; without rules, report features this close"
-    )
-
-    p = add("view", cmd_view, "Serve a local page showing the figure with its layout on top.")
-    p.add_argument("layout", help="layout file, or the figure folder (every variant is offered)")
-    p.add_argument(
-        "--paper", default="a4", help="sheet to show when the layout declares none (or 'none')"
-    )
-    p.add_argument("--port", type=int, default=8765)
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--no-browser", action="store_true", help="do not open a browser")
-    p.add_argument(
-        "--edit",
-        action="store_true",
-        help="allow dragging the panels on the page and saving them as layout.<name>.yaml "
-        "(never layout.yaml itself)",
-    )
-
-    p = add("check", cmd_check, "Check layout and saved panel files (sizes, reports).")
-    p.add_argument("layout")
-
-    p = add("bundle", cmd_bundle, "Collect .tex + panel PDFs into a folder for Overleaf upload.")
-    p.add_argument("layout")
-    p.add_argument(
-        "output_dir", nargs="?", help="folder to fill (default: <output_dir>/overleaf in the figure)"
-    )
-    p.add_argument("--prefix", help="panel path inside Overleaf (default figures/<name>/)")
-
-    p = add("build", cmd_build, "Run panel scripts, then preview + LaTeX + check.")
-    p.add_argument("layout")
-    p.add_argument("panels", nargs="*", help="only these panels (default: all)")
-    p.add_argument("--python", help="interpreter that runs the notebooks (default: this one)")
-    p.add_argument("--sources", help="folder holding the panel scripts (default: next to the layout)")
-
-    p = add("export", cmd_export, "Write the final single-file figure (.pdf, .tif, .png).")
-    p.add_argument("layout")
-    p.add_argument("-o", "--output", required=True, help="e.g. Figure1.pdf or Fig1.tif")
-    p.add_argument("--dpi", type=int, help="raster formats; default: journal raster_dpi or style")
-    p.add_argument(
-        "--allow-missing",
-        action="store_true",
-        help="draw a panel that has no file as an empty box, for a draft (not for a journal)",
-    )
-
-    p = add("palettes", cmd_palettes, "List bundled colour-blind-safe palettes.")
-
-    p = add("demo", cmd_demo, "Copy a demo case into a folder (and optionally run it).")
-    p.add_argument("case", nargs="?", help="demo case; omit to list them")
-    p.add_argument("--dir", help="where to copy it (default: ./plotplate-demo-<case>)")
-    p.add_argument("--build", action="store_true", help="also run every step of the case")
-    p.add_argument("--python", help="interpreter that runs the notebooks (default: this one)")
-    p.add_argument("--list", action="store_true", help="list the cases")
+    # ----------------------------------------------------------- your setup
+    p = add("demo", cmd_demo)
+    p.add_argument("--dir", help="where to copy it (default: ./plotplate-demo-figure)")
+    p.add_argument("--build", action="store_true", help="also run every step")
+    p.add_argument("--python", help="interpreter that runs the panel scripts (default: this one)")
     p.add_argument("--force", action="store_true", help="write into a non-empty folder")
 
-    p = add("doctor", cmd_doctor, "Report versions, environments and fonts; check they agree.")
-    p.add_argument("--python", help="interpreter that runs the notebooks")
+    p = add("doctor", cmd_doctor)
+    p.add_argument("--python", help="interpreter that runs the panel scripts")
+    p.add_argument("--rebuild-fonts", action="store_true", help="rescan the system fonts first")
 
-    p = add("fonts", cmd_fonts, "Report whether fonts are visible to matplotlib.")
-    p.add_argument("family", nargs="*")
-    p.add_argument("--rebuild", action="store_true", help="rescan system fonts first")
-
-    p = add("skills", cmd_skills, "Install the bundled agent skills, or say where they are.")
+    p = add("skills", cmd_skills)
     p.add_argument("--dest", default=".claude/skills", help="folder to copy the skills into")
     p.add_argument("--list", action="store_true", help="list the skills, what they do, and where")
-    p.add_argument("--paths", action="store_true", help="just the paths, one per line")
-    p.add_argument("--json", action="store_true", help="name, description and path as JSON")
-    p.add_argument("--print", action="store_true", help="print every skill (to paste into any agent)")
     p.add_argument("--force", action="store_true")
+
+    add("journals", cmd_journals)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point."""
+    """Entry point. A file plotplate cannot read is a message, not a traceback."""
     args = build_parser().parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

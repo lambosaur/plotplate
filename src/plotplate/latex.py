@@ -24,6 +24,7 @@ under each panel and would make the assembled figure taller than the layout says
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path, PurePosixPath
 
@@ -108,13 +109,15 @@ def write_figure_scaffold(
         \input{figures/figure_7/figure_7-figure.tex}
 
     It is written once and never again: ``plotplate build`` rewrites the panels beside it and
-    leaves this file alone, so a caption written here survives every rebuild. ``force`` writes a
-    fresh one, which is how to get the scaffold back after deleting it.
+    leaves this file alone, so a caption written here survives every rebuild. ``plotplate latex``
+    copies *this* file into the upload folder, with only the included path changed, so the
+    caption travels with it. ``force`` writes a fresh one, which is how to get the scaffold back
+    after deleting it.
 
     ``graphics_prefix`` is where the included file sits *as the manuscript sees it*. Left out,
     it is the path from this file to the output folder -- nothing when a build writes beside the
     layout, ``output/`` when it writes into ``output_dir`` -- so the file compiles from the
-    figure folder. The copy ``plotplate bundle`` writes carries the Overleaf path instead.
+    figure folder. The copy ``plotplate latex`` writes carries the Overleaf path instead.
     """
     import os
 
@@ -131,7 +134,7 @@ def write_figure_scaffold(
         "% placement ([t], [h!], ...), or wrap it in a starred figure* for a wide one.",
         "% plotplate never overwrites it; it rewrites the panels in the file included below.",
         "% The path below is relative to whatever LaTeX compiles: adjust it when this file is",
-        "% included from a manuscript in another folder (`plotplate bundle` writes it ready).",
+        "% included from a manuscript in another folder (`plotplate latex` writes it ready).",
         "\\begin{figure}[tbp]",
         "  \\centering",
         f"  \\input{{{body}}}%",
@@ -152,14 +155,12 @@ def write_figure_scaffold(
 
 
 def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = None) -> Path:
-    r"""Copy ``<name>.tex`` and the panel PDFs into ``out_dir`` for upload to Overleaf.
+    r"""Fill ``out_dir`` with what a manuscript needs: the panel PDFs and the two ``.tex`` files.
 
-    The composed figure (``figure.pdf``) is copied too, as ``<name>.pdf``, when it exists. It
-    is not what the manuscript includes -- ``\input{<name>.tex}`` places the panels, which is
-    what keeps them at scale 1.0 and the letters where the layout puts them -- but it is the
-    one file to look at, to send to a co-author, and to hand-finish in a drawing program when a
-    figure needs a last touch that no layout can express. Including that file instead is then
-    one line (see ``docs/workflow.md``).
+    ``\input{<name>.tex}`` is what places the panels, which is what keeps them at scale 1.0 and
+    the letters where the layout puts them. ``<name>-figure.tex`` is **copied** from the one
+    beside the layout, with only the included path rewritten, so the caption written there is
+    the caption that gets uploaded.
 
     Args:
         layout: the figure layout.
@@ -179,15 +180,27 @@ def bundle(layout: Layout, out_dir: str | Path, graphics_prefix: str | None = No
             missing.append(name)
     if missing:
         raise FileNotFoundError(f"Panels without PDF: {missing}; run their notebooks first")
-    composed = layout.output_dir / "figure.pdf"
-    if not composed.exists():  # written by plotplate 0.2 and earlier
-        composed = layout.base_dir / "preview.pdf"
-    if composed.exists():
-        shutil.copy2(composed, out_dir / f"{layout.name}.pdf")
-    write_figure_scaffold(
-        layout, out_dir / f"{layout.name}-figure.tex", graphics_prefix=prefix, force=True
-    )
+    _copy_scaffold(layout, out_dir / f"{layout.name}-figure.tex", prefix)
     return write_figure_tex(layout, out_dir / f"{layout.name}.tex", graphics_prefix=prefix)
+
+
+def _copy_scaffold(layout: Layout, target: Path, prefix: str) -> Path:
+    r"""Carry the author's ``<name>-figure.tex`` across, pointing at the uploaded panels file.
+
+    Only the ``\input{...<name>.tex}`` line changes. Everything else -- the caption, the label,
+    the placement, whatever was added by hand -- is the author's and is copied as it stands. If
+    there is no such file yet (nothing was built), a fresh scaffold is written instead.
+    """
+    source = layout.base_dir / f"{layout.name}-figure.tex"
+    if not source.exists():
+        return write_figure_scaffold(layout, target, graphics_prefix=prefix, force=True)
+    pattern = re.compile(r"\\input\{[^}]*" + re.escape(layout.name) + r"\.tex\}")
+    wanted = f"\\input{{{prefix}{layout.name}.tex}}"
+    text, count = pattern.subn(lambda _: wanted, source.read_text(encoding="utf-8"))
+    if not count:  # the author rewrote the include themselves; leave it alone
+        text = source.read_text(encoding="utf-8")
+    target.write_text(text, encoding="utf-8")
+    return target
 
 
 def standalone_document(layout: Layout, graphics_prefix: str = "panels/", labels: bool = True) -> str:

@@ -7,7 +7,6 @@ checkout all carry the same files — as long as the package-data patterns say s
 these tests check, by building a real wheel.
 """
 
-import json
 import zipfile
 from pathlib import Path
 
@@ -49,20 +48,14 @@ def test_the_skills_are_in_the_wheel(wheel):
     assert all(wheel.read(name).strip() for name in skills)  # and none of them is empty
 
 
-def test_skills_paths_can_be_read(capsys):
-    """`plotplate skills --paths` prints files an agent can open, one per line."""
-    assert main(["skills", "--paths"]) == 0
-    paths = [Path(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
-    assert paths and all(path.is_file() and path.name == "SKILL.md" for path in paths)
+def test_every_skill_is_a_readable_file_with_a_description(capsys):
+    """`plotplate skills --list` names files an agent can open, each one describing itself."""
+    assert main(["skills", "--list"]) == 0
+    out = capsys.readouterr().out
+    paths = [Path(line.strip()) for line in out.splitlines() if line.strip().endswith("SKILL.md")]
+    assert {"figure-review", "figure-panel-fitting"} <= {path.parent.name for path in paths}
+    assert all(path.is_file() for path in paths)
     assert all("description:" in path.read_text(encoding="utf-8") for path in paths)
-
-
-def test_skills_json_lists_name_description_and_path(capsys):
-    assert main(["skills", "--json"]) == 0
-    skills = json.loads(capsys.readouterr().out)
-    assert {"figure-review", "figure-panel-fitting"} <= {skill["name"] for skill in skills}
-    for skill in skills:
-        assert skill["description"] and Path(skill["path"]).is_file()
 
 
 def test_skills_list_says_where_they_live(capsys):
