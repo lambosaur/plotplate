@@ -595,9 +595,9 @@ def _copy_tree(source: Any, target: Path) -> None:
 
 
 def cmd_latex(args: argparse.Namespace) -> int:
+    """Fill a folder with what the manuscript needs: the panels and the .tex that places them."""
     from .latex import bundle
 
-    """Fill a folder with what the manuscript needs: the panels and the .tex that places them."""
     layout = Layout.load(args.layout)
     status = cmd_check(args)
     # Everything a build produces lives under output_dir; the upload folder is one of those.
@@ -608,9 +608,10 @@ def cmd_latex(args: argparse.Namespace) -> int:
     print("then, one line in the manuscript:\n")
     print(f"  \\input{{{prefix}{layout.name}-figure.tex}}\n")
     print(
-        f"{layout.name}-figure.tex holds the figure environment, the caption and the label: it is a\n"
-        f"copy of the one beside your layout, so the caption you wrote travels with it.\n"
-        f"{layout.name}.tex holds the panels, and plotplate rewrites it on every build."
+        f"{layout.name}.tex and the panel PDFs are generated: re-upload them after every build.\n"
+        f"{layout.name}-figure.tex holds the figure environment, the caption and the label. It is a\n"
+        f"copy of {_rel(layout.base_dir / f'{layout.name}-figure.tex')}, so a caption written there\n"
+        "travels with it; write the caption in Overleaf instead and you simply do not re-upload it."
     )
     return status
 
@@ -687,6 +688,35 @@ def _alignment_issues(layout: Layout) -> list[Issue]:
     return issues
 
 
+def _print_measured_axes(layout: Layout) -> None:
+    """Print the axes the panels actually drew, as layout entries, ready to paste.
+
+    A panel drawn with plain matplotlib puts its axes where matplotlib decided. Those positions
+    are measured and recorded in page millimetres, which is the same coordinate system the layout
+    uses -- so promoting one into an `axes:` entry is copying, not estimating. What is left to a
+    person is the names: `ax1` says nothing, `roc` is what another panel can be aligned to.
+    """
+    from .align import read_features
+
+    features, _ = read_features(layout)
+    if not features:
+        print("no geometry yet: draw the panels first (`plotplate build`)")
+        return
+    print(f"\n# measured axes, in page mm, from {_rel(layout.panels_dir)}/<panel>.json")
+    print("# paste under `panels:` in the layout, renaming anything called ax1, ax2, …")
+    for panel in layout.panels:
+        drawn = [f for f in features.values() if f.panel == panel and f.kind == "axes"]
+        if not drawn:
+            continue
+        print(f"  {panel}:\n    axes:")
+        for feature in sorted(drawn, key=lambda f: f.name):
+            edges = ", ".join(
+                f"{edge}: {feature.values[edge]:g}" for edge in ("left", "top", "right", "bottom")
+            )
+            note = "  # name me" if _ANONYMOUS.match(feature.name) else ""
+            print(f"      {feature.name}: {{{edges}}}{note}")
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     """Everything that can be wrong with a figure, in one report."""
     from .render import panel_status
@@ -699,6 +729,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     print(f"{layout.name}: {len(layout.panels)} panels, {layout.width} x {layout.height} mm")
     status = _print_issues(issues)
     print("OK" if status == 0 else "ERRORS")
+    if getattr(args, "axes", False):
+        _print_measured_axes(layout)
     return status
 
 
@@ -988,6 +1020,11 @@ def build_parser() -> argparse.ArgumentParser:
     # ----------------------------------------------------------- at hand-off
     p = add("check", cmd_check)
     p.add_argument("layout")
+    p.add_argument(
+        "--axes",
+        action="store_true",
+        help="also print the axes the panels drew, as layout entries to paste",
+    )
 
     p = add("export", cmd_export)
     p.add_argument("layout")

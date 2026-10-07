@@ -63,6 +63,11 @@ plotplate build layout.yaml        # draw the panels, place them, check them
   Before, a misspelled key was silently ignored and the feature simply did not work.
   `src/plotplate/schema.py` is the one table that lists every key, and every command reports a broken
   file in one line instead of a traceback.
+- **`plotplate check --axes`** prints the axes the panels actually drew, in page millimetres, as
+  `axes:` entries ready to paste into the layout — including the ones a library created and you never
+  asked for.
+  Promoting a freely drawn axes into a declared one is then copying rather than estimating; the names,
+  and which edges should be shared, stay a decision.
 - **Alignment is checked with no file to write.**
   Every axes edge the layout declares at the same coordinate is a promise, and `plotplate check`
   verifies it against what the panels measured (`align-drift`, in millimetres).

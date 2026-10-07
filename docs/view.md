@@ -6,13 +6,15 @@
 plotplate view figures/figure_1     # http://127.0.0.1:8765, Ctrl-C to stop
 ```
 
-This is where a layout is edited. The page shows the figure on the sheet it is meant for, with the
-layout drawn over it, and the boxes can be moved. Nothing is written until you ask for it.
+This is where a layout is edited.
+The page shows the figure on the sheet it is meant for, with the layout drawn over it, and the boxes
+can be moved.
+Nothing is written until you ask for it.
 
 ## What the page shows
 
-- the page, its text block and the space kept for the caption — A4 unless the layout's `page:`
-  section says otherwise, and the view says when it had to assume one;
+- the page, its text block and the space kept for the caption — A4 unless the layout's `page:` section
+  says otherwise, and the view says when it had to assume one;
 - panel boxes and letters, axes rectangles, guides, alignment rules and the measured geometry, each
   one toggleable, so you can also look at the layout with the figure hidden;
 - every layout variant of the figure: one is active, the others can be overlaid as outlines;
@@ -69,6 +71,6 @@ It binds to 127.0.0.1 and uses only the Python standard library.
 `layout.yaml` is never written: its comments, its `mosaic:` and its journal widths do not survive
 being written back as numbers, so what you drag is saved beside it and you copy it over when you are
 happy with it.
-Anything a drag cannot express — an annotation, a last cosmetic touch — belongs in the layout
-file, or in a drawing program on `plotplate export <layout> -o touch-up.svg`, which links the panel
-SVGs so each one stays editable.
+Anything a drag cannot express — an annotation, a last cosmetic touch — belongs in the layout file, or
+in a drawing program on `plotplate export <layout> -o touch-up.svg`, which links the panel SVGs so
+each one stays editable.

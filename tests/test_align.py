@@ -136,6 +136,26 @@ def test_legends_and_named_artists_become_anchors(tmp_path):
     assert legend.get_visible()
 
 
+def test_check_prints_what_the_panels_drew_as_layout_entries(tmp_path, capsys):
+    """The step from "I drew it freely" to "this must line up" is copying, never estimating."""
+    data = {
+        "schema": 1,
+        "area": {"width": 100, "height": 60},
+        "panels": {"A": {"box": [0, 0, 100, 60]}},  # no axes declared at all
+    }
+    dump_yaml(data, tmp_path / "layout.yaml")
+    layout = pp.Layout.load(tmp_path / "layout.yaml")
+    panel = layout.panel("A")
+    fig = panel.figure()
+    fig.add_axes(panel.rect(10, 5, 80, 45)).plot([0, 1])  # plain matplotlib, in page mm
+    panel.save(fig, formats=["pdf"])
+
+    assert main(["check", str(layout.path), "--axes"]) == 0
+    out = capsys.readouterr().out
+    assert "ax1: {left: 10, top: 5, right: 90, bottom: 50}  # name me" in out
+    assert "paste under `panels:`" in out
+
+
 def test_check_reports_axes_that_have_no_name(tmp_path, capsys):
     data = {
         "schema": 1,

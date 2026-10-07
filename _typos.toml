@@ -11,4 +11,6 @@
 fpr = "fpr"
 
 [files]
-extend-exclude = ["*.ipynb", "pixi.lock"]
+# tests/test_schema.py misspells layout keys on purpose (`area.widht`, `optimize.max_strech`):
+# they are the fixtures of the check that catches them, and correcting them deletes the subject.
+extend-exclude = ["*.ipynb", "pixi.lock", "tests/test_schema.py"]

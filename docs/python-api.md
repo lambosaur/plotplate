@@ -2,28 +2,30 @@
 
 [← README](../README.md) · [the layout file](layout.md) · [alignment](alignment.md)
 
-This is everything a panel script calls. The short version: plotplate gives you a matplotlib figure
-of exactly the right size, and takes it back when you are done. What happens in between is your
-code, unchanged.
+This is everything a panel script calls.
+The short version: plotplate gives you a matplotlib figure of exactly the right size, and takes it
+back when you are done.
+What happens in between is your code, unchanged.
 
 ## A panel script
 
 ```python
 import plotplate as pp
 
-layout = pp.Layout.load("layout.yaml")   # the file, or the folder holding it
-panel = layout.panel("A")                # KeyError if the layout has no panel A
+layout = pp.Layout.load("layout.yaml")  # the file, or the folder holding it
+panel = layout.panel("A")  # KeyError if the layout has no panel A
 
-fig = panel.figure()                     # exactly the size of box A, journal style applied
-ax = fig.add_subplot()                   # ... or plt-style, or gridspec, or seaborn
+fig = panel.figure()  # exactly the size of box A, journal style applied
+ax = fig.add_subplot()  # ... or plt-style, or gridspec, or seaborn
 ax.plot(fpr, tpr)
 ax.set_xlabel("False positive rate")
 
-panel.save(fig)                          # the files, and the checks
+panel.save(fig)  # the files, and the checks
 ```
 
-There is no plotplate way of plotting. `panel.figure()` returns a plain `matplotlib.figure.Figure`,
-and everything that works on one works here.
+There is no plotplate way of plotting.
+`panel.figure()` returns a plain `matplotlib.figure.Figure`, and everything that works on one works
+here.
 
 | call | what it does |
 | --- | --- |
@@ -35,14 +37,14 @@ and everything that works on one works here.
 
 ### What `panel.save` does, and why not `plt.savefig`
 
-It writes the three image files with the settings the assembly depends on (`bbox_inches=None`,
-`pad_inches=0`, no timestamps), so the file is exactly the size of the box, byte-stable between
-runs, and placeable at scale 1.0.
+It writes the three image files with the settings the assembly depends on
+(`bbox_inches=None`, `pad_inches=0`, no timestamps), so the file is exactly the size of the box,
+byte-stable between runs, and placeable at scale 1.0.
 
-Then it runs the checks, and warns about everything it finds: fonts below the journal's minimum,
-text clipped by the panel edge, lines too thin to print, axes that moved off their rectangle. These
-are the things a figure cannot show you until it is too late. `panel.save(fig, strict=True)` raises
-instead of warning, for a pipeline that should stop.
+Then it runs the checks, and warns about everything it finds: fonts below the journal's minimum, text
+clipped by the panel edge, lines too thin to print, axes that moved off their rectangle.
+These are the things a figure cannot show you until it is too late.
+`panel.save(fig, strict=True)` raises instead of warning, for a pipeline that should stop.
 
 And it writes `A.json` beside the images: where every visible axes ended up, in page millimetres.
 That file is the only input to the alignment check, which is how `plotplate check` can say that two
@@ -53,17 +55,19 @@ panels drawn by two different scripts did not line up.
 ### Looking at the whole figure while drawing one panel
 
 ```python
-panel.context()     # a notebook cell of its own, after save
+panel.context()  # a notebook cell of its own, after save
 ```
 
 It composes the figure from the panel files on disk — so neighbours appear as they were last saved,
-and this panel as you just saved it — and returns an image. Nothing is written next to the layout.
+and this panel as you just saved it — and returns an image.
+Nothing is written next to the layout.
 
 ## When panels must line up with each other
 
-Yes, this works across panels, and it is the only reason the mechanism exists. Two panels are two
-separate matplotlib figures drawn by two separate scripts, which never see each other. What makes
-their spines land on the same line is that both are *declared* on it:
+Yes, this works across panels, and it is the only reason the mechanism exists.
+Two panels are two separate matplotlib figures drawn by two separate scripts, which never see each
+other.
+What makes their spines land on the same line is that both are *declared* on it:
 
 ```yaml
 guides:
@@ -74,20 +78,67 @@ panels:
 ```
 
 ```python
-ax = panel.axes(fig, "roc")     # creates the axes at that rectangle, in page millimetres
+ax = panel.axes(fig, "roc")  # creates the axes at that rectangle, in page millimetres
 ```
 
 `panel.axes` converts the layout rectangle into the fraction of *this* panel's figure that it
 occupies, so A's left spine and C's left spine both land at x = 11 mm of the finished figure.
 
-- The name has to be declared in the layout: `panel.axes(fig, "roc")` raises `KeyError` if the
-  panel has no `roc` entry. It places an axes where the layout says; it cannot invent a rectangle.
+- The name has to be declared in the layout: `panel.axes(fig, "roc")` raises `KeyError` if the panel
+  has no `roc` entry.
+  It places an axes where the layout says; it cannot invent a rectangle.
 - A grid (`ncols: 4`) returns a numpy array of axes, shaped `(nrows, ncols)`.
-- Nothing coordinates the two scripts at run time, which is why `plotplate check` measures the
-  result afterwards and reports `align-drift` when a spine did not end up where it was declared.
+- Nothing coordinates the two scripts at run time, which is why `plotplate check` measures the result
+  afterwards and reports `align-drift` when a spine did not end up where it was declared.
 
-Declaring axes is optional, and worth it only for what has to line up. A panel without an `axes:`
-entry is free: use `fig.add_subplot`, `panel.subplots()`, a library's own figure, anything.
+Declaring axes is optional, and worth it only for what has to line up.
+A panel without an `axes:` entry is free: use `fig.add_subplot`, `panel.subplots()`, a library's own
+figure, anything.
+
+### Does the layout need updating after the panels are drawn?
+
+No. The layout leads and the panels follow: a panel drawn with plain matplotlib stays that way
+forever, and nothing in the layout has to learn about its axes.
+There is no sync step, and no command writes measured positions back into `layout.yaml` — if the two
+ever disagree, that is something to know about, not something to paper over, and `plotplate check` is
+what says so (`axes-moved`, `align-drift`).
+
+You promote an axes into the layout when you decide it has to line up with another panel, which is a
+decision, not a refresh.
+The numbers for it are already measured:
+
+```sh
+plotplate check figures/figure_1 --axes
+```
+
+```yaml
+  B:
+    axes:
+      heatmap: {left: 110, top: 11, right: 158, bottom: 45}
+      row_dendrogram: {left: 101.5, top: 11, right: 109.5, bottom: 45}
+      ax1: {left: 97, top: 4, right: 98.8, bottom: 11}  # name me
+```
+
+That block is in page millimetres, which is what an `axes:` entry is written in, so pasting it under
+`panels:` is copying rather than estimating — including the axes a library created and you never asked
+for (seaborn's dendrograms and colourbar, above).
+
+Two things are left to a person, and they are the reasons this is not one command:
+
+- **the names.** `ax1` is positional and says nothing; `roc` is what another panel can be aligned to,
+  and what survives a revision that moves the panels around.
+  `plotplate check` reports every anonymous axes (`unnamed-axes`) — finding them is mechanical, naming
+  them is not.
+  The `figure-panel-naming` skill is this job written down for an agent.
+- **which edges should be shared.**
+  That two panels *happen* to have the same baseline is not the same as deciding they must keep it.
+  Writing the shared value as a named guide (`y: {row1_bottom: 45}`) is how you say it on purpose, and
+  from then on `plotplate check` verifies it ([alignment.md](alignment.md)).
+
+The cheaper alternative, when a panel only needs a stable name and not a position:
+`ax.set_label("roc")` in the panel code.
+The measured geometry then carries that name, and an `alignment.yaml` rule can refer to it without the
+layout declaring anything.
 
 | call | what it does |
 | --- | --- |
@@ -251,5 +302,5 @@ Two published-figure arrangements were rebuilt and read back:
 
 Image detection splits along white gutters, so it needs every panel to be separable by straight cuts
 (which covers nearly all journal figures).
-Interlocking arrangements where no straight gutter separates panels need a PDF with placed
-panels, or boxes moved by hand in `plotplate view`.
+Interlocking arrangements where no straight gutter separates panels need a PDF with placed panels, or
+boxes moved by hand in `plotplate view`.

@@ -2,12 +2,13 @@
 
 [← README](../README.md) · [the Python API](python-api.md) · [design notes](design-notes.md)
 
-`layout.yaml` is the single source of truth for one figure: its size, its panels, and the
-rules they follow. The Python API, the viewer, the checks and the generated LaTeX all read it,
-and nothing else configures a figure.
+`layout.yaml` is the single source of truth for one figure: its size, its panels, and the rules they
+follow.
+The Python API, the viewer, the checks and the generated LaTeX all read it, and nothing else
+configures a figure.
 
-Every key a layout may hold is listed in `src/plotplate/schema.py`, which is also what checks
-the file: a key plotplate cannot read is refused by name, with the nearest legal one suggested.
+Every key a layout may hold is listed in `src/plotplate/schema.py`, which is also what checks the
+file: a key plotplate cannot read is refused by name, with the nearest legal one suggested.
 
 ## The levels
 
@@ -184,8 +185,8 @@ panels:
 `S02` that detection produces): the letters then follow the boxes, and an explicit `label.text` wins
 over the automatic one wherever the reading order is not what you want.
 With the default `labels: id` the key *is* the letter, which is convenient for a figure whose panels
-are simply A, B, C, and is why `plotplate view` refuses to change the key of a panel that has
-already been drawn: that key is the name of its file.
+are simply A, B, C, and is why `plotplate view` refuses to change the key of a panel that has already
+been drawn: that key is the name of its file.
 
 A panel is one matplotlib figure, whatever it contains: one axes, a grid of axes, or a library figure
 such as a seaborn clustermap (which is itself several axes).
@@ -411,8 +412,8 @@ That is the way to fix one panel (a photograph at its native aspect, say) and le
 ### Diagnostics
 
 - **Conflicts** raise an error naming the constraint that could not be added.
-- **Too few rules** are reported by `plotplate check` as `under-constrained`, listing the panels
-  that took the minimum size or the whole page.
+- **Too few rules** are reported by `plotplate check` as `under-constrained`, listing the panels that
+  took the minimum size or the whole page.
 - `plotplate resolve layout.yaml -o frozen.yaml` writes the solved boxes as plain numbers and drops
   the `constraints` section, when you want to stop solving and edit by hand.
 
@@ -441,4 +442,3 @@ Both end up as numbers the panel code reads.
 
 Layouts that use `page: {width, height}` for the figure box keep working: when there is no `area:`
 section, `page:` is read as the box, exactly as before.
-
