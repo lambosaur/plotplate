@@ -4,6 +4,95 @@ Notable changes per release.
 Versions follow [semantic versioning](https://semver.org); before 1.0 the layout file format may still
 change, and when it does, `schema:` is bumped and the old form keeps loading.
 
+## 0.4.0 — 2026-10-07
+
+Half the surface area. 28 commands become 16, ~90 flags become ~35, and what a figure *is* moves out
+of the command line and into `layout.yaml`, where it is versioned with the figure.
+
+The four commands you need, in the order you need them:
+
+```sh
+plotplate detect figure.pdf        # draft a layout from a figure that exists
+plotplate optimize layout.yaml     # spend the white space between the panels
+plotplate view figures/figure_1    # move the boxes by hand
+plotplate build layout.yaml        # draw the panels, place them, check them
+```
+
+### Migration
+
+| before | now |
+| --- | --- |
+| `from-pdf page.pdf` | `detect page.pdf` — one command for a PDF or an image, dispatching on the extension |
+| `tidy draft.yaml --fill-gap 4` | nothing: `detect` fills the space and rounds the numbers itself |
+| `preview layout.yaml` | `build layout.yaml` |
+| `latex layout.yaml` | nothing: `build` writes the `.tex` files |
+| `bundle <figure> <dest>` | `latex <figure> <dest>` — it *is* the LaTeX hand-off |
+| `validate`, `align`, `features` | `check` — one report for geometry, panel files and alignment |
+| `svg-export` / `svg-import` | `view` for editing a layout; `export -o touch-up.svg` for a last cosmetic pass |
+| `relabel` | `panels.<key>.label: {text: A}` in the layout |
+| `palettes` | `src/plotplate/presets/palettes.yaml` |
+| `fonts --rebuild` | `doctor --rebuild-fonts` |
+| `optimize --gap 4` | `gutter: 4` in the layout |
+| `optimize --max-stretch 1.2 --freeze A` | `optimize: {max_stretch: 1.2, panels: {A: {freeze: true}}}` |
+| `preview --page a4 --page-outlines` | `page: {paper: a4, outlines: true}` |
+| `build --sources code/` | `code_dir: code` |
+| `view --edit` | `view` — the viewer is the editor; it still writes nothing until you save |
+
+### Changed
+
+- **One gutter per figure.** `gutter: 4` (or `[horizontal, vertical]`) replaces `mosaic.gap` *and*
+  `optimize.gap`, which were the same number in two places.
+  Both are still read, and `check` says what to rename.
+- **A build leaves one picture, not two.** `page.{pdf,png,svg}` — the figure at its real size on its
+  sheet — is what a build writes and what you look at; `page.png` went from 100 to 200 dpi.
+  `figure.{pdf,png,svg}` is gone: `plotplate export -o <file>` writes the cropped figure when one file
+  is what you need, and it now also accepts `.svg`, which links the panel SVGs so Inkscape can open it
+  with every panel still editable.
+- **`code_dir:`** says where the panel scripts are, so a figure folder can keep its code in one place.
+  Jupytext percent-format `.py` files run as they are.
+- `detect` always draws its wireframe over the figure it read (`--background` is gone), always reads
+  axes rectangles and shared edges, and always rounds the draft to a few numbers.
+  A draft with overlapping boxes is still written: that is the detector pointing at something.
+- `plotplate --help` lists the commands in four groups, by when you need them.
+
+### Added
+
+- **The layout file is checked against the keys that exist.**
+  A key plotplate cannot read is refused by name, with the nearest legal one suggested
+  (`gutters: unknown key; did you mean "gutter"?`).
+  Before, a misspelled key was silently ignored and the feature simply did not work.
+  `src/plotplate/schema.py` is the one table that lists every key, and every command reports a broken
+  file in one line instead of a traceback.
+- **Alignment is checked with no file to write.**
+  Every axes edge the layout declares at the same coordinate is a promise, and `plotplate check`
+  verifies it against what the panels measured (`align-drift`, in millimetres).
+  `alignment.yaml` stays for what no rectangle can express — a mark in data coordinates, a legend
+  edge, a library's own axes.
+
+### Fixed
+
+- **`plotplate latex` uploaded a placeholder caption.** `bundle` regenerated `<name>-figure.tex`
+  instead of copying the one you edited, so the caption you wrote never reached Overleaf.
+  It now copies your file and rewrites only the `\input{}` path.
+- `snap` (the rounding inside `detect`) moved panel boxes without moving the guides and axes edges
+  declared on them, which could push an axes outside its panel; everything moves together now, and the
+  figure's own width and height move with it.
+
+### Documentation
+
+- `docs/workflow.md` is gone.
+  It was 456 lines, about 200 of which repeated the README, it disagreed with it about which version
+  to install, and two of its recipes exited 1.
+  What was only in it now has a home: [docs/view.md](docs/view.md) is the viewer.
+- [docs/layout.md](docs/layout.md) is the one reference for the file: the vocabulary and its picture,
+  every key, guides, constraints — merged from `coordinates.md`, `layout-spec.md` and
+  `constraints.md`.
+- [docs/python-api.md](docs/python-api.md) is new, and answers what `panel.figure`, `panel.axes` and
+  `panel.save` actually do.
+  It leads with plain matplotlib, because declaring axes is for panels that must line up with each
+  other, not for every panel.
+- The README is 163 lines instead of 286, and says how to install once instead of twice.
+
 ## 0.3.0 — 2026-10-05
 
 For figure folders that keep several layouts and build into one place.
