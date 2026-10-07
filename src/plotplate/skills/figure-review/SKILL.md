@@ -46,6 +46,7 @@ Most journals want one file per figure (`deliverable.composite` in the preset).
 
 ## Hand-off
 
-`plotplate bundle layout.yaml build/overleaf/<figure>` collects `<figure>.tex` and panel PDFs.
+`plotplate bundle <figure>` collects `<figure>.tex` and the panel PDFs into `<output_dir>/overleaf/`;
+a second argument names another destination.
 The user uploads the folder content to `figures/<figure>/` in Overleaf and uses
 `\input{figures/<figure>/<figure>.tex}` inside a `figure` environment (requires `graphicx`).

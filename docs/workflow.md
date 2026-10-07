@@ -371,10 +371,11 @@ See [alignment.md](alignment.md).
 ## 4. Hand off to Overleaf
 
 ```sh
-plotplate bundle layout.yaml build/overleaf/figure_1
+plotplate bundle figures/figure_1        # -> figures/figure_1/output/overleaf/
 ```
 
-1. Upload the content of `build/overleaf/figure_1/` to `figures/figure_1/` in the Overleaf project.
+1. Upload the content of that folder to `figures/figure_1/` in the Overleaf project.
+   Name another destination as a second argument when you keep uploads elsewhere.
 1. Make sure the preamble loads `graphicx`.
 1. Include it with one line, wherever the figure belongs:
 

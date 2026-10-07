@@ -146,3 +146,22 @@ def test_the_layout_can_ask_for_the_page_view_on_every_build(tmp_path, capsys):
     assert main(["build", str(tmp_path)]) == 0
     written = sorted(p.name for p in (tmp_path / "out").iterdir())
     assert "page.pdf" in written and "page.svg" in written and "figure.png" in written
+
+
+def test_bundle_lands_in_the_output_folder_by_default(tmp_path, capsys):
+    """One folder holds everything a build makes, the Overleaf upload included."""
+    dump_yaml({**FIGURE, "output_dir": "output"}, tmp_path / "layout.yaml")
+    layout = pp.Layout.load(tmp_path)
+    for name in layout.panels:
+        panel = layout.panel(name)
+        fig, _axes = panel.subplots()
+        panel.save(fig, formats=["pdf"])
+
+    assert main(["bundle", str(tmp_path)]) == 0
+    upload = tmp_path / "output" / "overleaf"
+    assert sorted(p.name for p in upload.iterdir()) == ["A.pdf", "B.pdf", "f-figure.tex", "f.tex"]
+    assert "output/overleaf" in capsys.readouterr().out
+
+    elsewhere = tmp_path / "final"  # ... and a destination can still be named
+    assert main(["bundle", str(tmp_path), str(elsewhere)]) == 0
+    assert (elsewhere / "f.tex").exists()

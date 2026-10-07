@@ -7,9 +7,9 @@
 Everything about the manuscript side: the two files a figure produces, what is in them, how to
 reference a panel, and why there is no `subfigure` anywhere.
 
-The short version: **`plotplate build` never runs LaTeX.** It runs your panel scripts and composes
-the figure in Python. The `.tex` is an extra output, for the manuscript, and the manuscript includes
-it with one line.
+The short version: **`plotplate build` never runs LaTeX.**
+It runs your panel scripts and composes the figure in Python.
+The `.tex` is an extra output, for the manuscript, and the manuscript includes it with one line.
 
 ## Two files, and only one of them is generated
 
@@ -133,4 +133,3 @@ Compiling the figure through LaTeX to export it would be the other way round —
 export match the manuscript instead — at the price of a TeX engine in the export path and of a
 preamble plotplate cannot know.
 It is not done, and this is why.
-

@@ -705,7 +705,9 @@ def cmd_bundle(args: argparse.Namespace) -> int:
 
     layout = Layout.load(args.layout)
     status = cmd_check(args)
-    out = bundle(layout, args.output_dir, graphics_prefix=args.prefix)
+    # Everything a build produces lives under output_dir; the upload folder is one of those.
+    destination = Path(args.output_dir) if args.output_dir else layout.output_dir / "overleaf"
+    out = bundle(layout, destination, graphics_prefix=args.prefix)
     prefix = args.prefix if args.prefix is not None else f"figures/{layout.name}/"
     print(f"wrote {_rel(out.parent)}: upload its content to {prefix} in the Overleaf project")
     print("then, one line in the manuscript:\n")
@@ -1256,7 +1258,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("bundle", cmd_bundle, "Collect .tex + panel PDFs into a folder for Overleaf upload.")
     p.add_argument("layout")
-    p.add_argument("output_dir")
+    p.add_argument(
+        "output_dir", nargs="?", help="folder to fill (default: <output_dir>/overleaf in the figure)"
+    )
     p.add_argument("--prefix", help="panel path inside Overleaf (default figures/<name>/)")
 
     p = add("build", cmd_build, "Run panel scripts, then preview + LaTeX + check.")

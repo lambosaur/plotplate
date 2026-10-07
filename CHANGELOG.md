@@ -32,6 +32,9 @@ Three breaking changes, all about *where* files go; nothing about how a figure i
   what is in them, referencing a panel, the SVG question — instead of a quarter of `workflow.md`.
   The README now opens with the whole tool on one screen, and its documentation index is a table of
   questions rather than a list of files.
+- `plotplate bundle` without a destination fills `<output_dir>/overleaf/`, so the upload folder is
+  under the same ignorable directory as the rest.
+  A second argument still names another destination, which is what a promotion script uses.
 - `output_dir:` in the layout: one folder for everything a build writes — `panels/`, the composed
   figure, the page view, the panels' `.tex`, the wireframe.
   The layout files and `<name>-figure.tex` stay beside the layout, because they are sources.

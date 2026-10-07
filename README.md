@@ -18,7 +18,7 @@ This tool reverses the order:
 1. The panels are assembled at scale 1.0, so every font prints at its true size, and the checks can
    prove it.
 
-## The whole thing
+## Folder organization
 
 A figure is a folder.
 You write the layout and one script per panel; plotplate writes the rest.
@@ -34,7 +34,7 @@ figures/figure_1/
 ```sh
 plotplate build figures/figure_1     # run the panel scripts, compose, check
 plotplate view figures/figure_1      # look at it on its sheet, in a browser
-plotplate bundle figures/figure_1 build/overleaf/figure_1   # hand it to the manuscript
+plotplate bundle figures/figure_1   # collect .tex + panel PDFs for the manuscript
 ```
 
 That is the tool.
@@ -224,7 +224,7 @@ plotplate view figure_1                                # look at it: page, boxes
 plotplate build figure_1                               # run all panel notebooks, preview, LaTeX snippet, checks
 plotplate align figure_1                               # do the panels line up? (millimetres, not eyeballing)
 plotplate preview figure_1 --page a4 --rules           # the figure on a page, with the alignment lines drawn
-plotplate bundle figure_1 build/overleaf/figure_1      # .tex + panel PDFs to upload to Overleaf
+plotplate bundle figure_1                             # .tex + panel PDFs to upload to Overleaf
 plotplate export figure_1 -o Figure1.pdf               # single production file (.pdf or .tif)
 ```
 
