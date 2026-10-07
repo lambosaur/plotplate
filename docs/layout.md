@@ -97,6 +97,7 @@ page:                       # the sheet the figure is printed on (optional, but 
   paper: a4                 # a4, letter, or [width, height] in mm
   margins: {left: 13.5, right: 13.5, top: 25, bottom: 25}
   caption: 25               # space kept under the figure for its caption
+  dpi: 300                  # resolution of page.png; page.pdf beside it is vector
 area:                       # the figure itself: what the panel coordinates are relative to
   width: double             # a number (mm) or a width name from the journal preset
   height: 150               # or `solve`, with a `constraints:` section
@@ -139,7 +140,7 @@ panels:
 | `style` | no | inline style overrides |
 | `area.width` | yes | mm, or a width name of the journal preset (`single`, `double`…); `page.width` in older layouts |
 | `area.height` | yes | mm, or `solve` to compute it from the constraints |
-| `page` | no (a4 assumed) | the physical sheet: `paper` (a4, letter, `none`, or `[w, h]`), `margins`, `caption` (mm), `outlines` (mark the panel boxes on the page view) |
+| `page` | no (a4 assumed) | the physical sheet: `paper` (a4, letter, `none`, or `[w, h]`), `margins`, `caption` (mm), `outlines` (mark the panel boxes on the page view), `dpi` (resolution of `page.png`, default 300) |
 | `gutter` | no (default 4) | millimetres between panels: one number, or `[horizontal, vertical]`. The mosaic computes the boxes with it, and the optimizer holds every gutter at it |
 | `code_dir` | no (default `.`) | folder holding the panel scripts, relative to the layout |
 | `output_dir` | no (default `.`) | folder for everything a build writes, relative to the layout |

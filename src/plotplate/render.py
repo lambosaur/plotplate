@@ -361,6 +361,7 @@ def page_view(
     paper: str = "a4",
     *,
     outlines: bool = False,
+    dpi: int | None = None,
 ) -> dict[str, Path]:
     """Show the figure as it would sit on a printed page: centred, with a caption and text lines.
 
@@ -372,6 +373,7 @@ def page_view(
     ``plotplate export`` writes the figure itself, cropped, when one file is what is needed.
 
     ``outlines`` draws every panel box, for checking the geometry rather than the content.
+    ``dpi`` is the resolution of the PNG; the layout's ``page: {dpi: …}`` by default.
     """
     import pymupdf
 
@@ -419,7 +421,7 @@ def page_view(
     pdf_path, png_path = out_dir / "page.pdf", out_dir / "page.png"
     svg_path = out_dir / "page.svg"
     doc.save(pdf_path, garbage=3, deflate=True)
-    page.get_pixmap(dpi=200).save(png_path)
+    page.get_pixmap(dpi=dpi or layout.page_dpi).save(png_path)
     # Text stays text, as in every other SVG this package writes, so the page view can be
     # opened in a drawing program and read.
     svg_path.write_text(page.get_svg_image(text_as_path=False), encoding="utf-8")

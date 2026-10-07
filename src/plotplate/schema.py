@@ -52,6 +52,7 @@ SECTIONS: dict[str, dict[str, tuple[type, ...]]] = {
         "margins": NUMBER + MAP,
         "caption": NUMBER,
         "outlines": BOOL,
+        "dpi": NUMBER,
         # The figure box lived here before `area:` existed, and took the same values.
         "width": NUMBER + TEXT,
         "height": NUMBER + TEXT,

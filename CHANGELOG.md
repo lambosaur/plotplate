@@ -4,6 +4,18 @@ Notable changes per release.
 Versions follow [semantic versioning](https://semver.org); before 1.0 the layout file format may still
 change, and when it does, `schema:` is bumped and the old form keeps loading.
 
+## 0.4.1 — 2026-10-07
+
+### Changed
+
+- **`page.png` is written at 300 dpi instead of 200**, and `page: {dpi: 600}` sets it to anything
+  else.
+  It is the rendering a build leaves to look at, so it has to survive being zoomed into: an A4 sheet
+  is 2481 x 3508 pixels at 300 dpi, and 4961 x 7016 at 600, which costs 1.1 MB and under half a
+  second.
+  `page.pdf` beside it is vector and has no resolution at all — that is the file to open for a detail,
+  or to print.
+
 ## 0.4.0 — 2026-10-07
 
 Half the surface area. 28 commands become 16, ~90 flags become ~35, and what a figure *is* moves out

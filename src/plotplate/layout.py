@@ -9,7 +9,7 @@ A layout file (YAML) looks like::
     style: {font: {size: 7}}   # inline overrides, applied last
     code_dir: code             # where your panel scripts are; default ".", beside the layout
     output_dir: output         # where builds write; default ".", the layout's own folder
-    page: {paper: a4, margins: 25, caption: 25}   # the sheet the figure is printed on
+    page: {paper: a4, margins: 25, caption: 25, dpi: 300}  # the sheet, and page.png's resolution
     area: {width: double, height: 150}   # the figure itself: mm, or a journal width name
     gutter: 4                  # whitespace between panels (mm), or [horizontal, vertical]
     guides:                    # named alignment lines an axes can be placed against (mm)
@@ -57,6 +57,7 @@ _GUIDE_REF = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*(?:([+-])\s*([0-9.]+))?\s*$")
 PAPERS: dict[str, tuple[float, float]] = {"a4": (210.0, 297.0), "letter": (215.9, 279.4)}
 DEFAULT_MARGIN_MM = 25.0
 DEFAULT_GUTTER_MM = 4.0
+DEFAULT_PAGE_DPI = 300
 
 
 def split_area_page(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
@@ -341,6 +342,17 @@ class Layout:
     def page_outlines(self) -> bool:
         """Whether the page view outlines every panel box (``page: {outlines: true}``)."""
         return bool((self.sheet or {}).get("outlines", False))
+
+    @property
+    def page_dpi(self) -> int:
+        """Resolution of ``page.png`` (``page: {dpi: 600}``); 300 by default.
+
+        The page view is the rendering a build leaves to look at, so it has to survive being
+        zoomed into: at 300 dpi an A4 sheet is 2481 x 3508 pixels, which reads tick labels.
+        ``page.pdf`` beside it is vector and has no resolution at all -- that is the one to open
+        when a detail has to be inspected, or printed.
+        """
+        return int((self.sheet or {}).get("dpi", DEFAULT_PAGE_DPI))
 
     @property
     def colors(self) -> dict[str, str]:

@@ -144,6 +144,27 @@ def test_a_layout_that_declares_no_sheet_still_gets_its_page_view(tmp_path, caps
     assert "page.pdf" in written and "page.svg" in written and "page.png" in written
 
 
+def test_the_page_view_is_sharp_enough_to_zoom_into_and_can_be_sharper(tmp_path):
+    """300 dpi by default; `page: {dpi: …}` for a closer look, and page.pdf has no resolution."""
+    from PIL import Image
+
+    from plotplate.render import page_view
+
+    dump_yaml({**FIGURE, "page": {"paper": "a4"}}, tmp_path / "layout.yaml")
+    layout = pp.Layout.load(tmp_path)
+    for name in layout.panels:
+        panel = layout.panel(name)
+        panel.save(panel.figure(), formats=["pdf"])
+
+    with Image.open(page_view(layout)["png"]) as image:
+        assert image.size == (2481, 3508)  # A4 at 300 dpi
+
+    layout.raw["page"] = {"paper": "a4", "dpi": 600}
+    layout = pp.Layout(layout.raw, layout.path)
+    with Image.open(page_view(layout)["png"]) as image:
+        assert image.size == (4961, 7016)
+
+
 def test_the_upload_folder_lands_in_the_output_folder_by_default(tmp_path, capsys):
     """One folder holds everything a build makes, the Overleaf upload included."""
     dump_yaml({**FIGURE, "output_dir": "output"}, tmp_path / "layout.yaml")
