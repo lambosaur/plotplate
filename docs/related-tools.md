@@ -21,11 +21,11 @@ verdict can be re-opened with the right amount of scepticism.
 | --- | --- | --- | --- |
 | [matplotlib](https://matplotlib.org) | drawing | every panel is one `Figure`, saved at its exact size | run |
 | [kiwisolver](https://github.com/nucleic/kiwi) | Cassowary constraint solving (already a matplotlib dependency) | `constraints:` and the `optimize` grid solve | run |
-| [PyMuPDF](https://pymupdf.readthedocs.io) | PDF reading and composition | `from-pdf` placements, previews, page rendering | run |
+| [PyMuPDF](https://pymupdf.readthedocs.io) | PDF reading and composition | `detect` placements, previews, page rendering | run |
 | [Marsilea](https://marsilea.readthedocs.io/en/stable/) | composable annotated heatmaps | optional, for panel *content*, through `fit_marsilea` | run |
 | seaborn figure-level plots | clustermap, jointplot, pairplot | optional, through `panel.fit` / `place_clustermap` | run |
 | LaTeX `graphicx` + `picture` | final assembly | panels placed at millimetre positions, scale 1.0 | run |
-| Inkscape / Illustrator | drawing and correcting boxes | optional round trip, `svg-export` / `svg-import` | run |
+| Inkscape / Illustrator | a last cosmetic touch | optional, on `plotplate export -o touch-up.svg` | run |
 
 ## Styling matplotlib for journals
 
@@ -51,7 +51,7 @@ The alternatives to "one file per panel, assembled by LaTeX at scale 1.0".
 | [figurefirst](https://github.com/FlyRanch/figurefirst) | layouts drawn in Inkscape, axes created from SVG rectangles | the closest existing idea, and an influence; targets a single figure for the whole page, and is not actively maintained | source |
 | [svgutils](https://github.com/btel/svg_utils) | compose SVG panels in Python | fine for an SVG-only pipeline; LaTeX assembly was chosen so the manuscript's own engine places the panels | page |
 | [patchworklib](https://github.com/ponnhide/patchworklib) | `ggplot`-style composition of matplotlib axes with operators | composes by relative arrangement, not by a millimetre layout the journal fixed | page |
-| [pylustrator](https://github.com/rgerum/pylustrator) | drag panels in a matplotlib window, writes the code back | same goal as `plotplate view --edit`, inside one figure; the edits land in the plotting script rather than in a layout file | page |
+| [pylustrator](https://github.com/rgerum/pylustrator) | drag panels in a matplotlib window, writes the code back | same goal as `plotplate view`, inside one figure; the edits land in the plotting script rather than in a layout file | page |
 | PGF backend (text typeset by LaTeX) | exact font match with the manuscript | slower and more fragile; system fonts (Arial) were chosen instead | page |
 | `subcaption` / `subfigure` for panel letters | the usual LaTeX way | adds a line under each panel, so the figure grows and the panels shrink; letters are stamped with `\put` instead | run |
 
@@ -115,8 +115,8 @@ Conflicts with this package, from its style files:
 What is worth reusing: the colour-blind-safe colour cycles by Paul Tol.
 They are bundled here (`tol-bright`, `tol-muted`, `tol-high-contrast`) together with the Wong palette
 shown in Nature's guide.
-Use one with `style.color_cycle: tol-bright` or `plotplate.palette("tol-bright")`;
-`plotplate palettes` lists them.
+Use one with `style.color_cycle: tol-bright` or `plotplate.palette("tol-bright")`; They are listed in
+`src/plotplate/presets/palettes.yaml`.
 
 ## Marsilea
 

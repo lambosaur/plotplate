@@ -1,6 +1,6 @@
 # Design notes
 
-[← README](../README.md) · [layout reference](layout-spec.md) · [workflow](workflow.md)
+[← README](../README.md) · [the layout file](layout.md) · [the layout file](layout.md)
 
 ## Scope
 
@@ -44,7 +44,7 @@ Fixing that by hand in Inkscape is slow and does not survive a data update.
 | Page guides are unnamed numbers, separate from `guides:`. | A guide an axes is placed against is a reference and needs a name; a line you arrange panels against is scaffolding, and naming it would suggest something depends on it. Deleting a page guide can never break a layout. |
 | The page's *arrange* button answers with boxes and writes nothing. | The optimizer is the same code the command runs, so the button cannot drift from it; and its result arriving as an edit (not a file) keeps one rule in the editor: only *save* writes. |
 | Boxes are brought back inside the figure before being optimized. | A box dragged over the edge is a mistake, not an arrangement. Optimized as it stands, it pulls the grid boundary out with it and squashes every other panel to make the total fit. |
-| The viewer can move boxes (`--edit`), but only saves `layout.<name>.yaml`. | Nudging a box is the commonest edit there is, and a round trip through a drawing program costs more than the edit. Writing back the maintained `layout.yaml` would replace its comments, `mosaic:` and journal widths with numbers, so the page saves a variant and the author copies it over. |
+| The viewer can move boxes (the viewer), but only saves `layout.<name>.yaml`. | Nudging a box is the commonest edit there is, and a round trip through a drawing program costs more than the edit. Writing back the maintained `layout.yaml` would replace its comments, `mosaic:` and journal widths with numbers, so the page saves a variant and the author copies it over. |
 | Inkscape SVG import only updates boxes. | Drawing tools are good for geometry. Style, guides and grid settings stay in YAML. |
 | Text is kept as text (PDF Type 42, SVG `fonttype: none`). | Journals require editable, embedded fonts. |
 | Journal presets record sources and a `verified` note. | Guidelines change, and several pages could not be fetched directly. |
@@ -98,8 +98,8 @@ decision.
   named areas inside it.
 - Alignment across panels only exists through page coordinates, because panels are separate figures:
   named guides are that mechanism.
-- `plotplate from-pdf --axes --guides` recovers both levels from an existing figure: plotting areas
-  from the rectangles matplotlib paints, guides from edges shared by several panels.
+- `plotplate detect --axes --guides` recovers both levels from an existing figure: plotting areas from
+  the rectangles matplotlib paints, guides from edges shared by several panels.
 
 ## Constraints and compound-figure separation (2026-09-25)
 
@@ -123,7 +123,7 @@ decision.
 - The NAR preset is not verified from journal text (see
   [journal-specs.md](journal-specs.md#nucleic-acids-research)).
 - Genome Research gives no column widths, so its layouts need an explicit `page.width`.
-- `plotplate from-pdf` records clipped `\includegraphics` (trim, clip) at their unclipped size.
+- `plotplate detect` records clipped `\includegraphics` (trim, clip) at their unclipped size.
 - Illustrator and Inkscape PDF exports were not tested (no licence or package available here);
   [layout-sources.md](layout-sources.md) states the expected behaviour.
 - The page's editing is panel boxes only: no axes, no guides, no undo beyond *revert*, and no editing

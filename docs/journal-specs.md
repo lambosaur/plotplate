@@ -1,6 +1,6 @@
 # Journal figure specifications
 
-[← README](../README.md) · [layout reference](layout-spec.md) · [workflow](workflow.md)
+[← README](../README.md) · [the layout file](layout.md) · [the layout file](layout.md)
 
 ## Scope
 

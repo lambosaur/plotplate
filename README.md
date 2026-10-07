@@ -14,268 +14,146 @@ This tool reverses the order:
 
 1. You describe the figure once, in a `layout.yaml`: the sheet it is printed on, the figure's own
    size, panel boxes, alignment guides, journal rules.
-1. Each panel is drawn by its own notebook, at exactly the size of its box.
+1. Each panel is drawn by its own script, at exactly the size of its box.
 1. The panels are assembled at scale 1.0, so every font prints at its true size, and the checks can
    prove it.
 
-## Folder organization
+## The whole thing
 
-A figure is a folder.
-You write the layout and one script per panel; plotplate writes the rest.
-
-```text
-figures/figure_1/
-  layout.yaml          # you: the sheet, the figure's size, one box per panel
-  panel_A_roc.py       # you: one script per panel, drawing into its box
-  figure_1-figure.tex  # you: the caption, written once, never overwritten
-  output/              # plotplate: panels/, figure.pdf, page.pdf, figure_1.tex
-```
+Four commands, in the order you use them:
 
 ```sh
-plotplate build figures/figure_1     # run the panel scripts, compose, check
-plotplate view figures/figure_1      # look at it on its sheet, in a browser
-plotplate bundle figures/figure_1   # collect .tex + panel PDFs for the manuscript
+plotplate detect figure.pdf        # 1. draft a layout from a figure that exists
+plotplate optimize layout.yaml     # 2. spend the white space between the panels
+plotplate view figures/figure_1    # 3. move the boxes by hand, in a browser
+plotplate build layout.yaml        # 4. draw the panels, place them, check them
 ```
 
-That is the tool.
-Everything below is detail: where a layout can come from (an old PDF, a drawing, a mosaic string), how
-a panel script fits its box, and what each journal wants.
+Starting from nothing instead of from an existing figure?
+`plotplate new fig/ --mosaic AB/CC --height 120` writes the first layout, and the rest is the same.
+
+Everything a figure needs is in its `layout.yaml`, not in flags: how wide it is, how much white space
+is left between panels, how far the optimizer may stretch a panel.
+The commands take paths.
 
 ## Install
 
-Three independent steps; do the ones you need.
+Two steps; the second is the one that matters.
 
-### 1. The `plotplate` command, once per user
-
-Use it to build layouts from PDFs, draw wireframes, preview and export, in any folder:
+**1. The `plotplate` command, once per user** — for layouts, wireframes, views and exports, in any
+folder:
 
 ```sh
-# pixi (a global environment you can extend with conda packages)
 pixi global install --git https://github.com/lambosaur/plotplate.git plotplate
-
-# or pipx
-pipx install "plotplate @ git+https://github.com/lambosaur/plotplate"
-
-# or uv
-uv tool install "plotplate @ git+https://github.com/lambosaur/plotplate"
+# or: pipx install "plotplate @ git+https://github.com/lambosaur/plotplate"
+# or: uv tool install "plotplate @ git+https://github.com/lambosaur/plotplate"
 ```
 
-All three work the same on Linux and macOS, and nothing is cloned into your projects.
-The tool needs nothing beyond its own dependencies (matplotlib, numpy, pyyaml, pymupdf).
-
-### 2. The library, in the environment that draws your figures
-
-Panel notebooks `import plotplate`, so the library must be installed where they run.
-This is the step that matters for producing figures; step 1 is a convenience.
+**2. The library, where your panel scripts run** — they `import plotplate`, so it has to be there:
 
 ```sh
 cd my-project
-pixi init                       # only if the project has no pixi.toml yet
-pixi add "python>=3.12"
-pixi add --pypi plotplate \
-    --git https://github.com/lambosaur/plotplate.git --tag v0.1.0   # or --branch dev
-pixi run plotplate --help       # the command is available here too
+pixi add --pypi plotplate --git https://github.com/lambosaur/plotplate.git --tag v0.4.0
+pixi run plotplate build figures/figure_1
 ```
 
-which writes:
-
-```toml
-[pypi-dependencies]
-plotplate = { git = "https://github.com/lambosaur/plotplate.git", tag = "v0.1.0" }
-```
-
-Run the commands through that environment (`pixi run plotplate build figures/figure_1`):
-`plotplate build` executes your panel notebooks with the project's Python, where pandas, seaborn and
-the rest already live.
-`pip install` works the same way in a non-pixi project.
-
-### Which installation runs what
-
-| commands | what they need | where to run them |
-| --- | --- | --- |
-| everything except `build` (layouts, wireframes, previews, exports, diffs, checks) | plotplate only | either installation |
-| `plotplate build`, `plotplate demo --build` | they execute *your* panel notebooks | the project environment, because the notebooks import plotplate and your own packages |
-
-So: use the user-wide command for layout work anywhere, and run builds through the project
-(`pixi run plotplate build …`).
-
-Two installations can disagree, and the tools say so instead of letting it pass:
+`plotplate build` is the only command that runs your code, so run it through that environment, where
+pandas and seaborn already live.
+The two installations can disagree; the tools say so rather than letting it pass:
 
 ```sh
-plotplate doctor              # both versions, both paths, fonts, optional packages
-plotplate doctor --python .pixi/envs/default/bin/python
+plotplate doctor                     # both versions, both paths, fonts, optional packages
+plotplate doctor --rebuild-fonts     # after installing Arial (Debian: ttf-mscorefonts-installer)
 ```
 
-`plotplate build` refuses to run when the interpreter cannot import plotplate, and warns when its
-version differs from the command's.
-`--python /path/to/python` picks the interpreter that runs the notebooks, so one command can drive
-another environment on purpose.
-Pin the same tag in both installations to keep them equal.
+**Agent skills (optional)** — `plotplate skills --dest .claude/skills` copies them into a project,
+`--list` says what each one is for and where it lives.
+They travel inside the package, however it was installed.
 
-### 3. The agent skills (optional)
+## Try it
 
 ```sh
-plotplate skills --dest .claude/skills     # Claude Code, this project
-plotplate skills --dest ~/.claude/skills   # Claude Code, every project
-plotplate skills --list                    # what each one is for, and where it is
-plotplate skills --paths                   # just the paths: hand them to an agent to read
-plotplate skills --json                    # the same, for a script
-plotplate skills --print                   # any other agent: paste, or append to AGENTS.md
+plotplate demo --dir ~/plotplate-demo --build    # the whole walkthrough
+plotplate view ~/plotplate-demo/figures/figure_1 # then look at what it made
 ```
 
-The skills travel inside the package, so they are there however plotplate was installed — from PyPI,
-from a git URL, or as an editable checkout — and `--paths` always prints files that can be opened.
-
-### Fonts
-
-Install Arial (on Debian/Ubuntu: `ttf-mscorefonts-installer`), then run `plotplate fonts --rebuild`
-once.
-
-## Try the demo
-
-```sh
-plotplate demo figure --dir ~/plotplate-demo --build   # the whole walkthrough
-plotplate view ~/plotplate-demo/figures/figure_1       # then look at what it made
-```
-
-The case ships inside the package, so it runs from anywhere.
-It starts from a manuscript page where a figure was assembled by hand, reads it back, optimizes the
-space it wasted, draws the panels of the maintained layout, and exports the result — so the folder
-ends up with three layouts of one figure to compare.
-It draws panels, so it needs pandas, pyarrow, scipy and seaborn in the environment that runs it: run
-it from a project environment that has them, add them to the tool
-(`pixi global add --environment plotplate …`, `pipx inject plotplate …`), or pass `--python`.
+It starts from a manuscript page where a figure was assembled by hand, reads it back, spends the space
+it wasted, draws the panels of the maintained layout, and exports the result — so the folder ends with
+three layouts of one figure to compare.
+Drawing the panels needs pandas, pyarrow, scipy and seaborn in the environment that runs it.
 [The demo README](src/plotplate/demo/figure/README.md) walks through every step.
 
 ## Where files go
 
-`plotplate` works on the folder you point it at.
-Every output is written next to the `layout.yaml` you pass, never inside the installation:
+`plotplate` works on the folder you point it at, and writes nothing inside the installation:
 
 ```text
 any/folder/figure_1/
-  layout.yaml             # you write it (step 1), or a symlink to the variant in use
+  layout.yaml             # you write it, or link it to the variant in use
   layout.optimized.yaml   # alternatives, named after where they came from
   figure_1-figure.tex     # the caption and the figure environment: yours, written once
-  panel_A_*.py            # your panel notebooks (step 2)
-  data/                   # optional: the tables your notebooks read
-  output/                 # everything a build writes, when output_dir: output
-    panels/A.pdf ...      #   written by panel.save()
-    figure.pdf/png/svg    #   the composed figure
-    page.pdf/png/svg      #   it on a sheet, with a caption (preview: {page: a4})
+  alignment.yaml          # optional, and only for what a rectangle cannot say
+  code/                   # your panel scripts, with code_dir: code
+  data/                   # optional: the tables they read
+  output/                 # everything a build writes, with output_dir: output
+    panels/A.pdf ...      #   one file per panel, written by panel.save()
+    page.pdf/png/svg      #   the figure on its sheet: what you look at
     figure_1.tex          #   the panels, placed, for LaTeX
+    overleaf/             #   plotplate latex: the folder you upload
 ```
 
-Without `output_dir`, those files are written beside the layout, as before.
-
+`code_dir` and `output_dir` both default to the figure folder itself.
 Commands take either the file or the folder (`plotplate build figures/figure_1`), and `plotplate view`
 offers every `layout.<variant>.yaml` it finds next to `layout.yaml`.
 
-There is no project skeleton to copy.
-Keep figures inside an existing analysis or paper repository, one folder per figure.
+There is no project skeleton to copy: keep figures inside an existing analysis or paper repository,
+one folder per figure.
 
-## Step 1: get a layout
+## Drawing a panel
 
-The layout is the starting point of everything else.
-Pick the source you have:
-
-| you have | command | notes |
-| --- | --- | --- |
-| a PDF of an assembled figure (Overleaf, Illustrator, Inkscape export) | `plotplate from-pdf page.pdf -o figure_1/layout.detected.yaml --journal nature --width double --axes --guides --wireframe check.png` | exact panel positions, panels named from their letters, and with `--axes --guides` the plotting areas and the edges panels share |
-| a screenshot | `plotplate detect shot.png --width 183 -o figure_1/layout.detected.yaml --wireframe check.png` | image-based; then `plotplate merge` and `plotplate tidy` |
-| a drawing (Inkscape, Illustrator) | `plotplate svg-import drawing.svg -o figure_1/layout.yaml` | one rectangle per panel, in a layer named `panels` |
-| nothing yet | `plotplate new figure_1/layout.yaml --journal nature --width double --height 150 --mosaic "AB/CC/DE"` | a grid to adjust |
-
-Always look at the result:
-`plotplate wireframe figure_1/layout.yaml` draws the boxes (optionally over the source with `--background`), and `plotplate view figure_1`
-shows it on the page.
-A layout read back from an old figure keeps that figure's white space;
-`plotplate optimize figure_1/layout.detected.yaml --gap 4` gives it back to the panels, within a distortion limit you set, and writes `layout.optimized.yaml` next to it ([docs/optimize.md](docs/optimize.md)).
-To adjust boxes by hand, `plotplate svg-export figure_1/layout.yaml`, move the rectangles in Inkscape,
-then `plotplate svg-import`.
-[docs/layout-sources.md](docs/layout-sources.md) explains what each source must contain;
-[docs/layout-spec.md](docs/layout-spec.md) documents the file.
-
-No language model is needed for any of these commands: the PDF reader follows the page's drawing
-instructions, and image detection splits along blank gutters.
-An agent can drive them, and decide the parts that are judgement (grouping, naming, which edges should
-align).
-
-## Step 2: draw each panel
+Your plotting code does not change.
+It is given a figure of exactly the right size, and hands it back when it is done:
 
 ```python
 import plotplate as pp
 
 panel = pp.Layout.load("layout.yaml").panel("A")
-fig = panel.figure()  # exact size of box A, style applied
-ax = panel.axes(fig, "roc")  # plotting area from the layout, aligned with other panels
+fig = panel.figure()  # exactly the size of box A, journal style applied
+ax = fig.add_subplot()  # ... then your code, unchanged: gridspec, seaborn, anything
 ax.plot(fpr, tpr)
-panel.save(fig)  # panels/A.pdf, .svg, .png + checks (font sizes, clipping, overlaps…)
+panel.save(fig)  # output/panels/A.pdf .svg .png, and the checks
 ```
 
-Seaborn clustermaps, Marsilea heatmaps, gridspecs and panels combining several of them are supported.
-[docs/panel-recipes.md](docs/panel-recipes.md) shows how, and lists what not to do
-(`tight_layout`, `bbox_inches="tight"`, moving axes by hand).
-
-## Step 3: assemble and deliver
-
-```sh
-plotplate view figure_1                                # look at it: page, boxes, axes, guides, checks, live
-plotplate build figure_1                               # run all panel notebooks, preview, LaTeX snippet, checks
-plotplate align figure_1                               # do the panels line up? (millimetres, not eyeballing)
-plotplate preview figure_1 --page a4 --rules           # the figure on a page, with the alignment lines drawn
-plotplate bundle figure_1                             # .tex + panel PDFs to upload to Overleaf
-plotplate export figure_1 -o Figure1.pdf               # single production file (.pdf or .tif)
-```
-
-Every command writes files and prints text; none of them opens a window, so they work the same over
-SSH or in CI.
-`plotplate preview` writes `figure.pdf`, `figure.png` and `figure.svg` into the figure's output
-folder, and `--page a4` adds `page.pdf/png/svg`.
-`output_dir: output` in the layout puts every built file in one folder, leaving the layouts and the
-caption file beside it as the only things to track.
-Open them with your own viewer, or read the PNG with an agent.
-
-The preview has no margins on purpose: it is the figure file itself.
-Page margins and captions belong to the manuscript; `--page a4` shows the figure in that context.
+`panel.save` replaces your `plt.savefig` calls, and runs the checks that catch what a figure cannot
+show you: fonts below the journal minimum, clipped text, lines too thin to print.
+When panels must line up with each other, declare their axes in the layout and ask for them by name —
+[python-api.md](docs/python-api.md) has that, and the rest of the API.
 
 ## Documentation
 
-**Start here** — [docs/workflow.md](docs/workflow.md): one figure from nothing to a manuscript.
-
-When you need it:
-
 | question | file |
 | --- | --- |
-| What goes in `layout.yaml`? | [layout-spec.md](docs/layout-spec.md) |
-| What do page, area, panel, axes, guide, gutter mean? | [coordinates.md](docs/coordinates.md) — one picture of all of it |
-| How do I write the panel code? | [panel-recipes.md](docs/panel-recipes.md) |
+| What do page, area, panel, axes, guide, gutter mean, and what goes in `layout.yaml`? | [layout.md](docs/layout.md) |
+| How do I write the panel code? | [python-api.md](docs/python-api.md) |
+| What does the viewer do? | [view.md](docs/view.md) |
 | What does plotplate give LaTeX, and what do I write? | [latex.md](docs/latex.md) |
-| My figure came from an old PDF / screenshot / Inkscape | [layout-sources.md](docs/layout-sources.md) |
+| My figure came from an old PDF or a screenshot | [layout-sources.md](docs/layout-sources.md) |
 | The boxes waste space | [optimize.md](docs/optimize.md) |
 | Axes across panels must line up | [alignment.md](docs/alignment.md) |
-| Let the boxes follow relations instead of numbers | [constraints.md](docs/constraints.md) |
 | What does this journal require? | [journal-specs.md](docs/journal-specs.md) |
-| Why not use <some other tool>? | [related-tools.md](docs/related-tools.md) |
+| Why not use \<some other tool>? | [related-tools.md](docs/related-tools.md) |
 | Why is it built this way? | [design-notes.md](docs/design-notes.md) |
 
 ## Commands
 
-| command | purpose |
+`plotplate --help` lists them in the same four groups.
+
+| | |
 | --- | --- |
-| `plotplate demo` | copy (and `--build`) the complete example |
-| `plotplate from-pdf` / `plotplate detect` / `plotplate svg-import` / `plotplate new` | create a layout |
-| `plotplate merge` / `plotplate tidy` / `plotplate svg-export` / `plotplate resolve` / `plotplate relabel` | adjust a layout |
-| `plotplate optimize` | give the white space between panels back to the panels, within a distortion limit |
-| `plotplate diff` | compare two layouts: moved, merged, split, added, removed, with a revision plan |
-| `plotplate validate` / `plotplate wireframe` / `plotplate align` / `plotplate features` | inspect a layout, check alignment, list measurable features |
-| `plotplate view` | local page showing the figure on its sheet, with the layout and every variant on top (`--edit` to drag the boxes and save a variant) |
-| `plotplate build` | run panel notebooks, then preview, LaTeX and checks |
-| `plotplate preview` / `plotplate latex` / `plotplate check` | individual build steps |
-| `plotplate bundle` / `plotplate export` | deliver to Overleaf or to a journal |
-| `plotplate journals` / `plotplate palettes` / `plotplate fonts` / `plotplate skills` | presets, colours, fonts, agent skills |
-| `plotplate features --check` | list panel parts; fail when any axes is unnamed |
-| `plotplate doctor` | which versions and environments are in play |
+| **the four you need** | `detect` draft a layout from a figure that exists · `optimize` spend the white space · `view` move the boxes in a browser · `build` draw the panels and check them |
+| **at hand-off** | `check` everything that can be wrong, in one report · `export` the figure as one file (.pdf, .png, .tif, .svg) · `latex` the folder to upload to Overleaf |
+| **when a layout needs surgery** | `new` · `merge` · `resolve` · `diff` · `wireframe` |
+| **your setup** | `demo` · `doctor` · `skills` · `journals` |
 
 ## Contributing
 

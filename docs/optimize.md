@@ -1,7 +1,7 @@
 # Optimize: spend the white space
 
-[← README](../README.md) · [layout sources](layout-sources.md) · [constraints](constraints.md) ·
-[workflow](workflow.md)
+[← README](../README.md) · [layout sources](layout-sources.md) ·
+[constraints](layout.md#constraints-boxes-computed-not-typed) · [the layout file](layout.md)
 
 ## Scope
 
@@ -19,7 +19,7 @@ What it does **not** decide:
 
 - the order of the panels, or which row they are in (that is the meaning of the figure),
 - whether panel A *should* be wider than panel B (that is a judgement about content; you say so with
-  `--freeze`, `--keep-aspect`, or by editing the layout),
+  `freeze`, `keep_aspect` or `max_stretch` in the layout's `optimize:` section),
 - what is drawn inside a panel (the panel scripts do that, from the box the layout gives them).
 
 ## How far it may go: the distortion limit
@@ -30,22 +30,27 @@ width, never more than 2.0.
 One run, and the report says which factor it used.
 
 ```sh
-plotplate optimize figures/figure_1                      # decides, and says what it decided
-plotplate optimize figures/figure_1 --max-stretch 1.2    # never grow a panel by more than 20 %
-plotplate optimize figures/figure_1 --max-stretch 1.0    # no distortion: only move panels
+plotplate optimize figures/figure_1    # decides, and says what it decided
 ```
 
-`--max-stretch 1.0` still normalises the gutters and pushes the panels together; the figure then
+How much distortion a figure tolerates is a property of the figure, so it is written in the file
+rather than passed on a command line:
+
+```yaml
+optimize:
+  max_stretch: 1.2    # never grow a panel by more than 20 %
+  max_shrink: 1.2     # ... and the other direction, which retargets a figure to a narrower column
+```
+
+`max_stretch: 1.0` still normalises the gutters and pushes the panels together; the figure then
 becomes narrower instead of the panels becoming bigger, and the report says so.
-`--max-shrink` (1.2) is the other direction, which is what lets a figure be retargeted to a narrower
-column.
 
 When you set a factor that cannot work, the message carries the one that can:
 
 ```text
 cannot optimize layout.detected.yaml: no arrangement fits with panels growing at most 1.05x
-and 4 mm gutters. --max-stretch 1.10 works (or leave it out, and it is chosen for you);
-a smaller --gap also helps
+and 4 mm gutters. optimize.max_stretch 1.10 works (or leave it out, and it is chosen for
+you); a smaller gutter also helps
 ```
 
 And when a limit you chose leaves space unused, the note names the row, not a range of millimetres:
@@ -72,12 +77,11 @@ optimize:
 
 `plotplate optimize` reads that section every time, so the intent is versioned with the figure, is
 visible in a diff, and is something an agent can edit.
-The flags (`--gap`, `--max-stretch`, `--freeze`, `--keep-aspect`) override it for one run, for trying
-something out.
+The gutter it holds comes from the figure's own `gutter:` key, for the same reason.
 
 ## Page guides are hard stops
 
-A [page guide](layout-spec.md#page-guides) is a line the optimizer will not move a panel across:
+A [page guide](layout.md#page-guides) is a line the optimizer will not move a panel across:
 
 - a panel that ends beside a guide may grow up to it, and no further;
 - two guides with nothing between them hold that band open — it is reserved space (a legend, a label
@@ -85,14 +89,14 @@ A [page guide](layout-spec.md#page-guides) is a line the optimizer will not move
 - a panel that *already* spans a guide keeps spanning it: the stop applies to the shared edges, which
   is what holds back the panels beside the guide;
 - a guide on the figure's own edge, or outside it — a margin of the sheet, or one left behind by a
-  narrower `--width` — constrains nothing, because the figure's edges already do.
+  narrower target width — constrains nothing, because the figure's edges already do.
 
 The report says which guides held (`guides-held`), and the space they keep open is not counted as a
-row that could have been filled, so it never asks for a bigger `--max-stretch` to chase space that is
+row that could have been filled, so it never asks for a bigger `max_stretch` to chase space that is
 empty on purpose.
 
-In `plotplate view --edit`, **arrange** uses the guides as they are on the page, before they are
-saved: drag a guide, press arrange, see it hold.
+In `plotplate view`, **arrange** uses the guides as they are on the page, before they are saved: drag
+a guide, press arrange, see it hold.
 
 ## Notes
 
@@ -129,8 +133,8 @@ it.
 for `plotplate view` to switch between:
 
 ```sh
-plotplate optimize figures/figure_1 --max-stretch 1.1 --as careful
-plotplate optimize figures/figure_1 --max-stretch 1.6 --as bold
+plotplate optimize figures/figure_1 --as careful
+plotplate optimize figures/figure_1 --width single --as narrow
 ```
 
 ## How it works
@@ -141,38 +145,47 @@ plotplate optimize figures/figure_1 --max-stretch 1.6 --as bold
    This is the step that recovers a hole: a narrow panel next to a wide one, a ragged right edge, a
    short last row.
 1. **Recover the grid.**
-   Panel edges within `--tolerance` (1 mm) of each other become one shared boundary, which turns the
-   panels into spans over a grid.
+   Panel edges within `optimize.tolerance` (1 mm) of each other become one shared boundary, which
+   turns the panels into spans over a grid.
    A panel may span several columns or rows.
    A panel nested inside another is recorded as an inset and keeps its place inside its host.
 1. **Re-spend the space.**
-   Every gutter of that grid becomes exactly `--gap`, and the rest of the width (and height) goes to
-   the panels: the boundaries are solved so they add up to the target size, each panel stays inside
-   its limit, and each strip prefers one overall scale — which is what spreads the recovered space
-   evenly instead of giving it all to one panel.
+   Every gutter of that grid becomes exactly the figure's `gutter:`, and the rest of the width (and
+   height) goes to the panels: the boundaries are solved so they add up to the target size, each panel
+   stays inside its limit, and each strip prefers one overall scale — which is what spreads the
+   recovered space evenly instead of giving it all to one panel.
 
 The solver is Cassowary (`kiwisolver`, already a matplotlib dependency), the same one the
-[constraints](constraints.md) use.
+[constraints](layout.md#constraints-boxes-computed-not-typed) use.
 No objective function is minimised: "no wasted space" is stated as a requirement (the boundaries must
 add up to the width), which is why the result is reproducible and the failure messages are exact.
 
 ### Sizes
 
-| flag | meaning |
+The width to aim for is the one thing passed on the command line, because aiming a draft at a column
+is a decision about this run:
+
+```sh
+plotplate optimize figures/figure_1 --width double   # mm, or a journal width name
+plotplate optimize figures/figure_1 --journal nature --width double
+```
+
+The height follows from the layout:
+
+| `optimize.height` | meaning |
 | --- | --- |
-| `--width 174` or `--width single` | fill that width exactly (a journal width name works) |
-| `--height scale` (default) | let the height follow the width, so the figure keeps its proportions |
-| `--height keep` | fill the current height too |
-| `--height 168` | fill that height (how you bring a figure under a journal's maximum) |
+| `scale` (default) | let the height follow the width, so the figure keeps its proportions |
+| `keep` | fill the current height too |
+| `168` | fill that height (how you bring a figure under a journal's maximum) |
 
 ### Axes move with their panel
 
 The distance from a panel edge to its outermost axes edge is kept: that space holds tick labels, axis
 titles and the panel letter, and none of them gets bigger because the panel did.
 Everything between those edges is stretched, so the extra millimetres end up in the plotting areas.
-Shared axes edges are then named as [guides](layout-spec.md) again; when a formerly shared edge no
-longer coincides — two rows grew by different factors — the report says so, and `plotplate align`
-checks it after a rebuild.
+Shared axes edges are then named as [guides](layout.md) again; when a formerly shared edge no longer
+coincides — two rows grew by different factors — the report says so, and `plotplate check` checks it
+after a rebuild.
 
 ## What it refuses
 
@@ -191,7 +204,7 @@ the honest answer, since that is what they are.
 ## Where the result goes
 
 By default next to the input, as the `optimized`
-[variant](workflow.md#several-layouts-for-one-figure):
+[variant](layout.md#file-names-and-several-layouts-for-one-figure):
 
 ```sh
 plotplate optimize figures/figure_1/layout.detected.yaml   # -> layout.optimized.yaml
@@ -212,7 +225,7 @@ exists to prevent.
 
 Both compute boxes, from different starting points:
 
-| | `plotplate optimize` | [`constraints:`](constraints.md) |
+| | `plotplate optimize` | [`constraints:`](layout.md#constraints-boxes-computed-not-typed) |
 | --- | --- | --- |
 | input | boxes that already exist | relations you write |
 | keeps | the arrangement you had | the relations, whatever the size |

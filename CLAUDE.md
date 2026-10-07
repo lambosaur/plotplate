@@ -10,7 +10,7 @@ Conventions live directly in this repo: this file, `.claude/skills/`, and inline
   Read it before changing behaviour.
 - The demo ships inside the package (`src/plotplate/demo/figure/`) and is the end-to-end reference:
   run `pixi run -e dev demo` after any change to drawing, checks, preview, LaTeX or export, then look
-  at `examples/figure-walkthrough/figures/figure_1/preview.png`.
+  at `examples/figure-walkthrough/figures/figure_1/output/page.png`.
   Regenerate README images with `pixi run -e dev docs-figures`.
 - Branches: `main` (released), `dev` (integration), `feature/<topic>` from `dev`.
   See `CONTRIBUTING.md`.

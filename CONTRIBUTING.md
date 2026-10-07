@@ -42,7 +42,7 @@ This is where most iteration should happen.
 See project-meta-seed/docs/tooling.md for the full local CI story (`actionlint`, `act`).
 
 After any change to drawing, checks, preview, LaTeX or export, run the demo and look at
-`examples/figure-walkthrough/figures/figure_1/preview.png`.
+`examples/figure-walkthrough/figures/figure_1/output/page.png`.
 Regenerate `docs/images/` when the pictures in the README change.
 
 ## Branches

@@ -1,6 +1,6 @@
 # LaTeX: what plotplate writes, and what you write
 
-[← README](../README.md) · [workflow](workflow.md) · [layout reference](layout-spec.md)
+[← README](../README.md) · [the layout file](layout.md) · [the layout file](layout.md)
 
 ## Scope
 
@@ -78,7 +78,7 @@ what the preview and the export use; change them there and rebuild.
   that is the check doing its job.
 - **No `subfigure` / `subcaption`, on purpose.**
   They add a line under each panel, so the figure grows and the panels shrink
-  ([layout-spec.md](layout-spec.md#panel-letters)).
+  ([layout.md](layout.md#panel-letters)).
   The `.tex` places each panel at a fixed position with `\put` and stamps the letter on top, which
   costs no space.
 - **So do not wrap the panels in `subfigure`.**
